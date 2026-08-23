@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}استيراد بيانات الطلاب{% endblock %}
+{% block extra_style %}
+.import-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+.step-badge{display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:50%;background:var(--blue);
+  color:#fff;font-size:.78rem;font-weight:700;flex-shrink:0}
+.step-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;
+  border-bottom:1px solid #f0f4f9}
+.step-row:last-child{border-bottom:none}
+.step-text strong{display:block;font-size:.875rem;font-weight:700;color:var(--text)}
+.step-text span{font-size:.78rem;color:var(--muted);font-family:'Tajawal';line-height:1.5}
+.drop-zone{border:2px dashed #c8d4e8;border-radius:14px;padding:36px;text-align:center;
+  cursor:pointer;transition:all .2s;background:#fafbfd;position:relative}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--blue);background:#f0f4ff}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;padding:0}
+.drop-zone p{color:var(--muted);font-size:.875rem}
+.drop-zone strong{color:var(--blue)}
+.drop-zone .file-icon{font-size:2.5rem;display:block;margin-bottom:10px}
+.file-selected{background:#f0fff4;border-color:#9ae6b4!important}
+.result-row{display:flex;align-items:center;gap:10px;padding:9px 12px;
+  border-radius:8px;font-size:.82rem;margin-bottom:6px}
+.result-row.ok{background:#f0fff4;color:#276749}
+.result-row.skip{background:#fffbf0;color:#b45309}
+.result-row.err{background:#fff5f5;color:#c53030}
+.result-row svg{width:16px;height:16px;fill:currentColor;flex-shrink:0}
+.progress-wrap{background:#f0f4f9;border-radius:8px;height:8px;overflow:hidden;margin:12px 0}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--blue),var(--gold2));
+  border-radius:8px;transition:width .4s ease;width:0%}
+.col-tag{display:inline-block;background:rgba(26,58,107,.08);color:var(--blue);
+  padding:2px 8px;border-radius:4px;font-family:'Courier New';font-size:.72rem;margin:2px}
+.template-table{width:100%;border-collapse:collapse;font-size:.78rem}
+.template-table th{background:var(--navy);color:var(--gold2);padding:8px 10px;text-align:right;direction:ltr}
+.template-table td{padding:7px 10px;border-bottom:1px solid #f0f4f9;color:var(--muted);direction:ltr}
+@media(max-width:800px){.import-grid{grid-template-columns:1fr}}
+{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <h1>استيراد بيانات الطلاب</h1>
+  <a href="{{ url_for('admin_panel') }}" class="btn btn-outline btn-sm">← رجوع</a>
+</div>
+
+<div class="content">
+<div class="import-grid">
+
+  <!-- LEFT: upload + result -->
+  <div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-header">
+        <svg style="width:18px;height:18px;fill:var(--gold)" viewBox="0 0 24 24">
+          <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
+        </svg>
+        <h2>رفع ملف البيانات</h2>
+      </div>
+      <div class="card-body">
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
+          <span class="file-icon">📊</span>
+          <p><strong>انقر لاختيار الملف</strong> أو اسحبه هنا</p>
+          <p style="margin-top:5px;font-size:.75rem">Excel (.xlsx) أو CSV – حد 500 طالب</p>
+        </div>
+
+        <div id="file-info" style="display:none;margin-top:12px;padding:10px 14px;
+          background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;
+          display:flex;align-items:center;gap:10px">
+          <svg style="width:18px;height:18px;fill:#276749" viewBox="0 0 24 24">
+            <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6z"/>
+          </svg>
+          <div>
+            <strong id="file-name" style="font-size:.82rem;color:#276749;display:block"></strong>
+            <span id="file-size" style="font-size:.72rem;color:#6b7a99;font-family:'Tajawal'"></span>
+          </div>
+        </div>
+
+        <div id="progress-wrap" style="display:none;margin-top:14px">
+          <div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:4px">
+            <span>جارٍ المعالجة…</span>
+            <span id="prog-pct">0%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar" id="prog-bar"></div></div>
+        </div>
+
+        <button class="btn btn-primary btn-full" id="import-btn" disabled style="margin-top:14px">
+          <svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24">
+            <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
+          </svg>
+          <span id="import-btn-txt">استيراد البيانات</span>
+          <div class="spin" id="import-spin"></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-card" style="display:none" class="card">
+      <div class="card-header">
+        <svg style="width:18px;height:18px;fill:var(--success)" viewBox="0 0 24 24">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+        </svg>
+        <h2>نتيجة الاستيراد</h2>
+      </div>
+      <div class="card-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+          <div style="background:#f0fff4;border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:1.6rem;font-weight:900;color:#276749" id="res-created">0</div>
+            <div style="font-size:.72rem;color:#6b7a99;font-family:'Tajawal'">تم الإنشاء</div>
+          </div>
+          <div style="background:#fffbf0;border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:1.6rem;font-weight:900;color:#b45309" id="res-skipped">0</div>
+            <div style="font-size:.72rem;color:#6b7a99;font-family:'Tajawal'">تم التخطي</div>
+          </div>
+          <div style="background:#fff5f5;border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:1.6rem;font-weight:900;color:#c53030" id="res-errors">0</div>
+            <div style="font-size:.72rem;color:#6b7a99;font-family:'Tajawal'">أخطاء</div>
+          </div>
+        </div>
+        <div id="res-list" style="max-height:300px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: guide + template -->
+  <div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-header">
+        <svg style="width:18px;height:18px;fill:var(--blue)" viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+        </svg>
+        <h2>كيف تستخدم الاستيراد</h2>
+      </div>
+      <div class="card-body">
+        <div class="step-row">
+          <div class="step-badge">١</div>
+          <div class="step-text">
+            <strong>حمّل قالب Excel</strong>
+            <span>اضغط الزر أدناه لتحميل ملف جاهز بالأعمدة الصحيحة</span>
+          </div>
+        </div>
+        <div class="step-row">
+          <div class="step-badge">٢</div>
+          <div class="step-text">
+            <strong>أضف بيانات الطلاب</strong>
+            <span>كل سطر = طالب واحد. أعمدة إلزامية: رقم الطالب + الاسم</span>
+          </div>
+        </div>
+        <div class="step-row">
+          <div class="step-badge">٣</div>
+          <div class="step-text">
+            <strong>ارفع الملف</strong>
+            <span>النظام سيُنشئ السجلات تلقائياً ويُرسل إيميل لكل طالب عنده إيميل</span>
+          </div>
+        </div>
+        <div class="step-row">
+          <div class="step-badge">٤</div>
+          <div class="step-text">
+            <strong>الطالب يفتح رابطه</strong>
+            <span>يجد بطاقته جاهزة ويرفع صورته الشخصية</span>
+          </div>
+        </div>
+        <a href="{{ url_for('bulk_import_template') }}" class="btn btn-gold btn-full" style="margin-top:14px">
+          <svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+          </svg>
+          تحميل قالب Excel الجاهز
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <svg style="width:18px;height:18px;fill:var(--muted)" viewBox="0 0 24 24">
+          <path d="M3 3h18v2H3zm0 4h18v2H3zm0 4h12v2H3zm0 4h12v2H3zm0 4h18v2H3z"/>
+        </svg>
+        <h2>أعمدة الملف</h2>
+      </div>
+      <div class="card-body">
+        <p style="font-size:.78rem;color:var(--muted);font-family:'Tajawal';margin-bottom:12px">
+          الأعمدة المقبولة (يمكن استخدام العربية أو الإنجليزية):
+        </p>
+        <table class="template-table">
+          <tr>
+            <th>العمود</th><th>أمثلة الأسماء المقبولة</th><th>إلزامي؟</th>
+          </tr>
+          <tr>
+            <td>رقم الطالب</td>
+            <td><span class="col-tag">student_id</span><span class="col-tag">رقم_الطالب</span><span class="col-tag">رقم الطالب</span></td>
+            <td style="color:#c53030;font-weight:700">✓ نعم</td>
+          </tr>
+          <tr>
+            <td>الاسم</td>
+            <td><span class="col-tag">full_name</span><span class="col-tag">الاسم_الكامل</span><span class="col-tag">الاسم</span></td>
+            <td style="color:#c53030;font-weight:700">✓ نعم</td>
+          </tr>
+          <tr>
+            <td>السنة</td>
+            <td><span class="col-tag">year</span><span class="col-tag">السنة</span><span class="col-tag">العام</span></td>
+            <td style="color:#6b7a99">اختياري</td>
+          </tr>
+          <tr>
+            <td>الكلية</td>
+            <td><span class="col-tag">college</span><span class="col-tag">الكلية</span></td>
+            <td style="color:#6b7a99">اختياري</td>
+          </tr>
+          <tr>
+            <td>الإيميل</td>
+            <td><span class="col-tag">email</span><span class="col-tag">الايميل</span><span class="col-tag">البريد</span></td>
+            <td style="color:#6b7a99">اختياري<br><small style="color:#276749">لإرسال إيميل ترحيب</small></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dz = document.getElementById('drop-zone');
+const fi = document.getElementById('file-input');
+let selectedFile = null;
+
+fi.addEventListener('change', function() { handleFile(this.files[0]); });
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(f) {
+  if (!f) return;
+  selectedFile = f;
+  dz.classList.add('file-selected');
+  const info = document.getElementById('file-info');
+  info.style.display = 'flex';
+  document.getElementById('file-name').textContent = f.name;
+  document.getElementById('file-size').textContent = (f.size / 1024).toFixed(0) + ' KB';
+  document.getElementById('import-btn').disabled = false;
+}
+
+document.getElementById('import-btn').addEventListener('click', async () => {
+  if (!selectedFile) return;
+  const btn  = document.getElementById('import-btn');
+  const sp   = document.getElementById('import-spin');
+  const btxt = document.getElementById('import-btn-txt');
+  btn.disabled = true; sp.style.display = 'block'; btxt.textContent = 'جارٍ المعالجة…';
+
+  // Animate progress
+  const bar = document.getElementById('prog-bar');
+  const pct = document.getElementById('prog-pct');
+  document.getElementById('progress-wrap').style.display = 'block';
+  let p = 0;
+  const timer = setInterval(() => {
+    p = Math.min(p + 3, 85);
+    bar.style.width = p + '%'; pct.textContent = p + '%';
+  }, 80);
+
+  try {
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+    const res  = await fetch('/admin/bulk-import', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    clearInterval(timer);
+    bar.style.width = '100%'; pct.textContent = '100%';
+
+    if (data.success) {
+      const r = data.results;
+      document.getElementById('res-created').textContent = r.created;
+      document.getElementById('res-skipped').textContent = r.skipped;
+      document.getElementById('res-errors').textContent  = r.errors.length;
+
+      // Preview list
+      const list = document.getElementById('res-list');
+      const rows = r.preview.slice(0, 50).map(s => {
+        const cls  = s.status === 'تم الإنشاء' ? 'ok' : s.status === 'موجود مسبقاً' ? 'skip' : 'err';
+        const icon = cls === 'ok'
+          ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'
+          : cls === 'skip'
+            ? '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>'
+            : '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>';
+        return `<div class="result-row ${cls}">
+          <svg viewBox="0 0 24 24">${icon}</svg>
+          <span style="flex:1"><strong>${s.sid}</strong> – ${s.name}</span>
+          <span style="font-size:.72rem;font-family:'Tajawal'">${s.status}</span>
+        </div>`;
+      }).join('');
+      list.innerHTML = rows;
+      if (r.errors.length) {
+        list.innerHTML += r.errors.map(e =>
+          `<div class="result-row err"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg><span>${e}</span></div>`
+        ).join('');
+      }
+
+      document.getElementById('results-card').style.display = 'block';
+      document.getElementById('results-card').scrollIntoView({ behavior: 'smooth' });
+      showToast(`✅ تم: ${r.created} طالب جديد، ${r.skipped} متخطي`, 'success');
+    } else {
+      showToast(data.message, 'error');
+    }
+  } catch (err) {
+    clearInterval(timer);
+    showToast('خطأ في الاتصال بالخادم', 'error');
+  }
+
+  btn.disabled = false; sp.style.display = 'none'; btxt.textContent = 'استيراد البيانات';
+});
+</script>
+{% endblock %}

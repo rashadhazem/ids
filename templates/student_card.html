@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ student.full_name }} – بطاقة الطالب</title>
+<meta property="og:title" content="{{ student.full_name }}">
+<meta property="og:description" content="طالب في {{ student.college }} – {{ student.year }}">
+<meta property="og:image" content="/static/{{ student.image_path }}">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0d1f3c; --blue: #1a3a6b; --blue2: #1e4a8a;
+    --gold: #c8941a; --gold2: #e8b84b; --gold3: #f5d78e;
+    --light: #f0f4f9; --white: #fff; --text: #1a2744; --muted: #6b7a99;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Cairo', sans-serif;
+    background: linear-gradient(135deg, #0a1628 0%, #1a3a6b 50%, #0a1628 100%);
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 30px 16px;
+    gap: 28px;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 15% 40%, rgba(200,148,26,.1) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 70%, rgba(26,58,107,.35) 0%, transparent 50%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── ID Card ── */
+  .id-card {
+    position: relative; z-index: 1;
+    width: 380px; max-width: 100%;
+    background: linear-gradient(160deg, #0d1f3c 0%, #1a3a6b 100%);
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08);
+    animation: cardIn .6s cubic-bezier(.34,1.56,.64,1) forwards;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: scale(.85) translateY(20px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Geometric accent lines */
+  .card-accent {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 5px;
+    background: linear-gradient(90deg, var(--gold), var(--gold2), var(--gold));
+  }
+  .card-geo {
+    position: absolute; top: 0; right: -40px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(232,184,75,.06) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .card-geo2 {
+    position: absolute; bottom: -60px; left: -40px;
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(26,90,150,.12) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  /* Header strip */
+  .card-header {
+    padding: 22px 24px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(232,184,75,.15);
+  }
+  .uni-badge {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .uni-icon {
+    width: 38px; height: 38px;
+    background: rgba(232,184,75,.12);
+    border: 1.5px solid rgba(232,184,75,.3);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .uni-icon svg { width: 20px; height: 20px; fill: var(--gold2); }
+  .uni-text h3 { font-size: .72rem; font-weight: 700; color: var(--gold2); letter-spacing: .5px; }
+  .uni-text p  { font-size: .65rem; color: rgba(255,255,255,.4); font-family: 'Tajawal'; margin-top: 2px; }
+  .card-type {
+    font-size: .65rem; font-weight: 700;
+    background: rgba(232,184,75,.12);
+    border: 1px solid rgba(232,184,75,.25);
+    color: var(--gold2);
+    padding: 4px 10px; border-radius: 20px;
+    letter-spacing: .5px;
+  }
+
+  /* Body */
+  .card-body { padding: 22px 24px; display: flex; gap: 20px; align-items: flex-start; }
+
+  .photo-wrap {
+    flex-shrink: 0;
+    position: relative;
+  }
+  .photo-ring {
+    width: 100px; height: 100px;
+    border-radius: 16px;
+    background: rgba(232,184,75,.1);
+    border: 2px solid rgba(232,184,75,.4);
+    overflow: hidden;
+    position: relative;
+  }
+  .photo-ring img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform .3s;
+  }
+  .photo-ring:hover img { transform: scale(1.04); }
+  .photo-overlay {
+    position: absolute; inset: 0;
+    background: rgba(13,31,60,.55);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .25s;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .photo-ring:hover .photo-overlay { opacity: 1; }
+  .photo-overlay svg { width: 28px; height: 28px; fill: white; }
+  .photo-status {
+    position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+    background: #1a7f3c;
+    border: 2px solid var(--navy);
+    width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .photo-status svg { width: 11px; height: 11px; fill: white; }
+
+  .card-info { flex: 1; }
+  .student-name {
+    font-size: 1rem; font-weight: 700; color: var(--white);
+    line-height: 1.3; margin-bottom: 10px;
+  }
+  .info-row {
+    display: flex; align-items: center; gap: 7px;
+    margin-bottom: 7px;
+  }
+  .info-row svg { width: 13px; height: 13px; fill: var(--gold2); flex-shrink: 0; opacity: .8; }
+  .info-row span { font-size: .75rem; color: rgba(255,255,255,.65); font-family: 'Tajawal'; }
+
+  /* ID number strip */
+  .card-id-strip {
+    margin: 0 24px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(232,184,75,.15);
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .id-label { font-size: .68rem; color: rgba(255,255,255,.4); letter-spacing: .5px; }
+  .id-number {
+    font-family: 'Courier New', monospace;
+    font-size: 1.15rem; font-weight: 700;
+    color: var(--gold2);
+    letter-spacing: 2px;
+    direction: ltr;
+  }
+  .id-barcode {
+    display: flex; gap: 1.5px; align-items: center;
+  }
+  .id-barcode span {
+    display: inline-block;
+    width: 2px;
+    background: rgba(232,184,75,.4);
+    border-radius: 1px;
+  }
+
+  /* Footer */
+  .card-footer {
+    padding: 14px 24px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .validity { font-size: .68rem; color: rgba(255,255,255,.3); font-family: 'Tajawal'; }
+  .validity strong { color: rgba(255,255,255,.55); }
+  .logout-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border-radius: 12px; border: 1px solid rgba(232,184,75,.4); background: rgba(232,184,75,.14); color: #fff; text-decoration: none; font-weight: 700; transition: all .2s; }
+  .logout-btn:hover { background: rgba(232,184,75,.28); }
+
+  /* LinkedIn button */
+  .linkedin-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #0a66c2;
+    color: white; text-decoration: none;
+    padding: 8px 16px; border-radius: 8px;
+    font-size: .8rem; font-weight: 700; font-family: 'Cairo';
+    transition: all .2s;
+    box-shadow: 0 2px 12px rgba(10,102,194,.4);
+  }
+  .linkedin-btn:hover {
+    background: #0859a8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(10,102,194,.55);
+  }
+  .linkedin-btn svg { width: 16px; height: 16px; fill: white; }
+
+  /* ── Photo update panel ── */
+  .update-panel {
+    position: relative; z-index: 1;
+    width: 380px; max-width: 100%;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 16px;
+    padding: 22px;
+    backdrop-filter: blur(10px);
+    animation: cardIn .7s .15s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  .update-panel h3 {
+    color: rgba(255,255,255,.85); font-size: .9rem; font-weight: 700;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .update-panel h3 svg { width: 18px; height: 18px; fill: var(--gold2); }
+
+  /* ── Photo compare ── */
+  .photo-compare { display: none; gap: 12px; margin-bottom: 16px; }
+  .photo-compare.show { display: flex; }
+  .compare-item { flex: 1; text-align: center; }
+  .compare-item img {
+    width: 100%; aspect-ratio: 1;
+    object-fit: cover; border-radius: 10px;
+    border: 2px solid rgba(255,255,255,.15);
+  }
+  .compare-item img.new-img { border-color: rgba(100,200,120,.5); }
+  .compare-label { font-size: .72rem; color: rgba(255,255,255,.45); margin-top: 6px; font-family: 'Tajawal'; }
+  .compare-label.new { color: #68d391; }
+
+  /* ── Drop zone ── */
+  .upload-zone {
+    border: 2px dashed rgba(255,255,255,.18);
+    border-radius: 12px; padding: 24px 16px;
+    text-align: center; cursor: pointer;
+    transition: all .2s; position: relative;
+    background: rgba(255,255,255,.02);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: rgba(232,184,75,.5);
+    background: rgba(232,184,75,.05);
+  }
+  .upload-zone input {
+    position: absolute; inset: 0; opacity: 0;
+    cursor: pointer; width: 100%; height: 100%; padding: 0;
+  }
+  .upload-zone p { color: rgba(255,255,255,.45); font-size: .82rem; font-family: 'Tajawal'; }
+  .upload-zone strong { color: rgba(255,255,255,.75); }
+  .uz-icon { font-size: 2rem; display: block; margin-bottom: 8px; }
+
+  /* ── Image editor ── */
+  .editor-wrap { display: none; }
+  .editor-wrap.show { display: block; }
+
+  .editor-canvas-wrap {
+    border-radius: 12px; overflow: hidden;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.1);
+    cursor: grab;
+    touch-action: none;
+    position: relative;
+  }
+  .editor-canvas-wrap:active { cursor: grabbing; }
+  #editor-canvas {
+    display: block; width: 100%;
+    height: 260px; image-rendering: auto;
+  }
+
+  /* crop overlay label */
+  .crop-hint {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    font-size: .68rem; color: rgba(255,255,255,.45);
+    background: rgba(0,0,0,.4); padding: 3px 10px; border-radius: 20px;
+    pointer-events: none; font-family: 'Tajawal'; white-space: nowrap;
+  }
+
+  /* tools bar */
+  .editor-tools {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-top: 10px; align-items: center;
+  }
+  .tool-btn {
+    flex: 1; min-width: 60px;
+    padding: 7px 8px;
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 8px; background: rgba(255,255,255,.06);
+    color: rgba(255,255,255,.7); cursor: pointer;
+    font-size: .78rem; font-family: 'Cairo'; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    transition: all .15s;
+  }
+  .tool-btn:hover { background: rgba(255,255,255,.14); color: #fff; border-color: rgba(255,255,255,.3); }
+  .tool-btn svg { width: 14px; height: 14px; fill: currentColor; flex-shrink: 0; }
+  .tool-btn.danger { border-color: rgba(200,60,60,.3); color: rgba(255,140,140,.8); }
+  .tool-btn.danger:hover { background: rgba(200,60,60,.15); }
+
+  /* zoom slider */
+  .zoom-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 8px;
+  }
+  .zoom-row svg { width: 14px; height: 14px; fill: rgba(255,255,255,.4); flex-shrink: 0; }
+  .zoom-row input[type=range] {
+    flex: 1; accent-color: var(--gold2);
+    height: 4px; cursor: pointer;
+  }
+  .zoom-val {
+    font-size: .75rem; color: rgba(255,255,255,.5);
+    min-width: 38px; text-align: left;
+    font-family: 'Courier New'; direction: ltr;
+  }
+
+  /* save button */
+  .btn-update {
+    width: 100%; margin-top: 12px; padding: 12px;
+    background: linear-gradient(135deg, #c8941a, #e8b84b);
+    color: var(--navy); border: none; border-radius: 10px;
+    font-size: .92rem; font-weight: 900; font-family: 'Cairo';
+    cursor: pointer; transition: all .2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-update:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+  .btn-update:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-update svg { width: 18px; height: 18px; fill: currentColor; }
+
+  /* Toast */
+  #toast {
+    position: fixed; top: 20px; left: 50%;
+    transform: translateX(-50%) translateY(-120px);
+    z-index: 999; min-width: 280px; max-width: 90vw;
+    padding: 12px 18px; border-radius: 10px;
+    font-size: .875rem; font-weight: 600;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.35);
+    transition: transform .4s cubic-bezier(.34,1.56,.64,1), opacity .4s;
+    opacity: 0; font-family: 'Cairo';
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  #toast.success { background: #1a7f3c; color: #fff; }
+  #toast.error   { background: #c53030; color: #fff; }
+
+  footer {
+    position: relative; z-index: 1;
+    color: rgba(255,255,255,.25); font-size: .72rem;
+    font-family: 'Tajawal'; text-align: center;
+  }
+  footer a { color: var(--gold2); text-decoration: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="toast"><span id="toast-msg"></span></div>
+
+<!-- ══ ID CARD ══ -->
+<div class="id-card">
+  <div class="card-accent"></div>
+  <div class="card-geo"></div>
+  <div class="card-geo2"></div>
+
+  <div class="card-header">
+    <div class="uni-badge">
+      <div class="uni-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+      </div>
+      <div class="uni-text">
+        <h3>بطاقة هوية طالب</h3>
+        <p>Student Identity Card</p>
+      </div>
+    </div>
+    <span class="card-type">{{ student.year }}</span>
+  </div>
+
+  <div class="card-body">
+    <div class="photo-wrap">
+      <div class="photo-ring" id="photo-ring" onclick="document.getElementById('quick-upload').click()">
+        <img src="/static/{{ student.image_path }}" alt="{{ student.full_name }}" id="card-photo">
+        <div class="photo-overlay">
+          <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M18.2 4H16.4L14.8 2H9.2L7.6 4H5.8C4.8 4 4 4.8 4 5.8v12.4C4 19.2 4.8 20 5.8 20h12.4c1 0 1.8-.8 1.8-1.8V5.8C20 4.8 19.2 4 18.2 4z"/></svg>
+        </div>
+      </div>
+      <div class="photo-status">
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+      </div>
+      <input type="file" id="quick-upload" accept=".jpg,.jpeg" style="display:none">
+    </div>
+
+    <div class="card-info">
+      <div class="student-name">{{ student.full_name }}</div>
+
+      <div class="info-row">
+        <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+        <span>{{ student.college }}</span>
+      </div>
+      <div class="info-row">
+        <svg viewBox="0 0 24 24"><path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg>
+        <span>سنة التسجيل: {{ student.year }}</span>
+      </div>
+      <div class="info-row">
+        <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm4.24 16L12 15.45 7.77 18l1.12-4.81-3.73-3.23 4.92-.42L12 5l1.92 4.53 4.92.42-3.73 3.23L16.23 18z"/></svg>
+        <span>عضو مسجل رسمياً</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-id-strip">
+    <div>
+      <div class="id-label">رقم الطالب الجامعي</div>
+      <div class="id-number">{{ student.student_id }}</div>
+    </div>
+    <div class="id-barcode" id="barcode"></div>
+  </div>
+
+  <div class="card-footer">
+    <span class="validity">صالح للعام الدراسي <strong>{{ student.year }}/{{ student.year|int + 1 }}</strong></span>
+    <svg style="width:32px;height:32px;opacity:.15" viewBox="0 0 24 24" fill="rgba(232,184,75,1)">
+      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+    </svg>
+  </div>
+  <div style="display:flex;justify-content:flex-end;padding:0 24px 12px">
+    <a class="logout-btn" href="{{ url_for('auth_logout') }}">تسجيل خروج</a>
+  </div>
+</div>
+
+<!-- ══ UPDATE PHOTO PANEL ══ -->
+<div class="update-panel">
+  <h3>
+    <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M18.2 4H16.4L14.8 2H9.2L7.6 4H5.8C4.8 4 4 4.8 4 5.8v12.4C4 19.2 4.8 20 5.8 20h12.4c1 0 1.8-.8 1.8-1.8V5.8C20 4.8 19.2 4 18.2 4z"/></svg>
+    تحديث الصورة الشخصية
+  </h3>
+
+  <!-- Comparison shown after save -->
+  <div class="photo-compare" id="compare">
+    <div class="compare-item">
+      <img id="old-photo" src="" alt="القديمة">
+      <div class="compare-label">الصورة القديمة</div>
+    </div>
+    <div class="compare-item">
+      <img id="new-photo-compare" src="" alt="الجديدة" class="new-img">
+      <div class="compare-label new">الصورة الجديدة ✓</div>
+    </div>
+  </div>
+
+  <!-- Drop zone -->
+  <div class="upload-zone" id="up-zone">
+    <input type="file" id="new-photo-input" accept=".jpg,.jpeg">
+    <span class="uz-icon">📷</span>
+    <p><strong>اختر أو اسحب صورة جديدة</strong></p>
+    <p style="margin-top:4px;font-size:.72rem">JPG فقط · وجه واضح · حد 5 MB</p>
+  </div>
+
+  <!-- Image editor (shown after file chosen) -->
+  <div class="editor-wrap" id="editor-wrap">
+    <div class="editor-canvas-wrap" id="canvas-wrap">
+      <canvas id="editor-canvas"></canvas>
+      <div class="crop-hint">اسحب لتحريك · استخدم الزووم للتكبير</div>
+    </div>
+
+    <!-- Rotate & flip tools -->
+    <div class="editor-tools">
+      <button type="button" class="tool-btn" onclick="rotateDeg(-90)" title="تدوير يسار">
+        <svg viewBox="0 0 24 24"><path d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>
+        يسار
+      </button>
+      <button type="button" class="tool-btn" onclick="rotateDeg(90)" title="تدوير يمين">
+        <svg viewBox="0 0 24 24"><path d="M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z"/></svg>
+        يمين
+      </button>
+      <button type="button" class="tool-btn" onclick="rotateDeg(180)">
+        <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+        قلب
+      </button>
+      <button type="button" class="tool-btn" onclick="flipH()">
+        <svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zm0 8h2v-2h-2v2zM3 5v14l7-7-7-7zm14-2v2h2V3h-2zm-4 18h2v-2h-2v2zM19 3h-2v2h2V3zm0 16v2h2v-2h-2zM15 3h-2v2h2V3z"/></svg>
+        انعكاس
+      </button>
+      <button type="button" class="tool-btn danger" onclick="resetEditor()">
+        <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05L6.64 18.36A8.98 8.98 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
+        إعادة
+      </button>
+    </div>
+
+    <!-- Zoom slider -->
+    <div class="zoom-row">
+      <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/></svg>
+      <input type="range" id="zoom-slider" min="50" max="300" value="100" step="1"
+             oninput="onZoom(this.value)">
+      <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM7 9h5v1H7z"/></svg>
+      <span class="zoom-val" id="zoom-val">100%</span>
+    </div>
+
+    <!-- Change photo link -->
+    <p style="text-align:center;margin-top:10px">
+      <button type="button" onclick="document.getElementById('new-photo-input').click()"
+        style="background:none;border:none;color:rgba(255,255,255,.4);font-size:.78rem;cursor:pointer;font-family:'Cairo';text-decoration:underline">
+        تغيير الصورة
+      </button>
+    </p>
+  </div>
+
+  <button class="btn-update" id="update-btn" disabled>
+    <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+    حفظ الصورة
+  </button>
+</div>
+
+<footer>
+  © 2026 – نظام القيد والتسجيل الجامعي
+</footer>
+
+<script>
+const STUDENT_ID = "{{ student.student_id }}";
+
+// ── Barcode decoration ──
+const bc = document.getElementById('barcode');
+[18,10,22,14,8,20,12,18,8,16,22,10,14,20,8,18].forEach(h => {
+  const s = document.createElement('span'); s.style.height = h+'px'; bc.appendChild(s);
+});
+
+// ── Toast ──
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.className = 'show ' + type;
+  setTimeout(() => t.className = '', 4500);
+}
+
+// ══════════════════════════════════════════════
+// IMAGE EDITOR ENGINE
+// ══════════════════════════════════════════════
+const canvas   = document.getElementById('editor-canvas');
+const ctx      = canvas.getContext('2d');
+let img        = null;          // source Image object
+let state      = { rot: 0, flipH: false, scale: 1, ox: 0, oy: 0 };
+let dragging   = false;
+let dragStart  = { x: 0, y: 0, ox: 0, oy: 0 };
+
+function initCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width  = wrap.clientWidth  || 336;
+  canvas.height = 260;
+}
+
+function draw() {
+  if(!img) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width/2 + state.ox, canvas.height/2 + state.oy);
+  ctx.rotate(state.rot * Math.PI/180);
+  if(state.flipH) ctx.scale(-1, 1);
+  const rad  = state.rot * Math.PI/180;
+  const sin  = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
+  const fitW = canvas.width  / (img.width  * cos + img.height * sin);
+  const fitH = canvas.height / (img.width  * sin + img.height * cos);
+  const base = Math.min(fitW, fitH);
+  const s    = base * state.scale;
+  ctx.drawImage(img, -img.width*s/2, -img.height*s/2, img.width*s, img.height*s);
+  ctx.restore();
+}
+
+function loadImageFromDataUrl(dataUrl) {
+  img = new Image();
+  img.onload = () => { initCanvas(); draw(); };
+  img.src = dataUrl;
+}
+
+// Controls
+function rotateDeg(deg) { state.rot = (state.rot + deg + 360) % 360; draw(); }
+function flipH()         { state.flipH = !state.flipH; draw(); }
+function onZoom(v)       {
+  state.scale = v / 100;
+  document.getElementById('zoom-val').textContent = v + '%';
+  draw();
+}
+function resetEditor()   {
+  state = { rot: 0, flipH: false, scale: 1, ox: 0, oy: 0 };
+  document.getElementById('zoom-slider').value = 100;
+  document.getElementById('zoom-val').textContent = '100%';
+  draw();
+}
+
+// Drag to pan
+function getPos(e) {
+  if(e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  return { x: e.clientX, y: e.clientY };
+}
+canvas.addEventListener('mousedown',  startDrag);
+canvas.addEventListener('touchstart', startDrag, { passive: true });
+canvas.addEventListener('mousemove',  moveDrag);
+canvas.addEventListener('touchmove',  moveDrag, { passive: true });
+canvas.addEventListener('mouseup',    endDrag);
+canvas.addEventListener('touchend',   endDrag);
+canvas.addEventListener('mouseleave', endDrag);
+
+function startDrag(e) {
+  dragging = true;
+  const p = getPos(e);
+  dragStart = { x: p.x, y: p.y, ox: state.ox, oy: state.oy };
+}
+function moveDrag(e) {
+  if(!dragging) return;
+  const p = getPos(e);
+  state.ox = dragStart.ox + (p.x - dragStart.x);
+  state.oy = dragStart.oy + (p.y - dragStart.y);
+  draw();
+}
+function endDrag() { dragging = false; }
+
+// Pinch-to-zoom
+let lastPinch = 0;
+canvas.addEventListener('touchmove', e => {
+  if(e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const d  = Math.hypot(dx, dy);
+    if(lastPinch) {
+      state.scale = Math.max(.5, Math.min(3, state.scale * (d / lastPinch)));
+      const pct = Math.round(state.scale * 100);
+      document.getElementById('zoom-slider').value = pct;
+      document.getElementById('zoom-val').textContent = pct + '%';
+      draw();
+    }
+    lastPinch = d;
+  }
+}, { passive: true });
+canvas.addEventListener('touchend', () => { lastPinch = 0; });
+
+// Wheel zoom
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  state.scale = Math.max(.5, Math.min(3, state.scale * (e.deltaY < 0 ? 1.08 : 0.93)));
+  const pct = Math.round(state.scale * 100);
+  document.getElementById('zoom-slider').value = pct;
+  document.getElementById('zoom-val').textContent = pct + '%';
+  draw();
+}, { passive: false });
+
+// Export edited canvas → Blob → File
+function exportBlob() {
+  return new Promise(resolve => {
+    // render at 800×800 for upload
+    const out = document.createElement('canvas');
+    out.width = out.height = 800;
+    const oc  = out.getContext('2d');
+    const cw  = canvas.width, ch = canvas.height;
+    // same transform as draw() but on 800×800
+    oc.translate(400 + state.ox * (800/cw), 400 + state.oy * (800/ch));
+    oc.rotate(state.rot * Math.PI/180);
+    if(state.flipH) oc.scale(-1, 1);
+    const rad  = state.rot * Math.PI/180;
+    const sin  = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
+    const fitW = cw  / (img.width  * cos + img.height * sin);
+    const fitH = ch  / (img.width  * sin + img.height * cos);
+    const base = Math.min(fitW, fitH);
+    const s    = base * state.scale * (800/cw);
+    oc.drawImage(img, -img.width*s/2, -img.height*s/2, img.width*s, img.height*s);
+    out.toBlob(resolve, 'image/jpeg', 0.92);
+  });
+}
+
+// ── File input ──
+let originalDataUrl = null;
+document.getElementById('new-photo-input').addEventListener('change', function() {
+  const file = this.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    originalDataUrl = e.target.result;
+    resetEditor();
+    loadImageFromDataUrl(originalDataUrl);
+    document.getElementById('up-zone').style.display    = 'none';
+    document.getElementById('editor-wrap').classList.add('show');
+    document.getElementById('update-btn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+});
+
+// Quick upload from card photo
+document.getElementById('quick-upload').addEventListener('change', function() {
+  if(!this.files[0]) return;
+  const dt = new DataTransfer(); dt.items.add(this.files[0]);
+  document.getElementById('new-photo-input').files = dt.files;
+  document.getElementById('new-photo-input').dispatchEvent(new Event('change'));
+  document.getElementById('up-zone').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+// Drag & drop on zone
+const uz = document.getElementById('up-zone');
+uz.addEventListener('dragover',  e => { e.preventDefault(); uz.classList.add('drag-over'); });
+uz.addEventListener('dragleave', () => uz.classList.remove('drag-over'));
+uz.addEventListener('drop', e => {
+  e.preventDefault(); uz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if(!f) return;
+  const dt = new DataTransfer(); dt.items.add(f);
+  document.getElementById('new-photo-input').files = dt.files;
+  document.getElementById('new-photo-input').dispatchEvent(new Event('change'));
+});
+
+// ── Save ──
+document.getElementById('update-btn').addEventListener('click', async function() {
+  if(!img) return;
+  const origInnerHTML = this.innerHTML;
+  this.disabled = true;
+  this.innerHTML = `<svg style="width:18px;height:18px;fill:currentColor;animation:spin .7s linear infinite" viewBox="0 0 24 24"><path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z"/></svg> جارٍ الحفظ…`;
+
+  try {
+    const blob = await exportBlob();
+    const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+    const fd   = new FormData(); fd.append('image', file);
+    const res  = await fetch(`/student/${STUDENT_ID}/update-photo`, { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if(data.success) {
+      document.getElementById('card-photo').src = data.new_url + '?t=' + Date.now();
+      if(data.old_url) {
+        document.getElementById('old-photo').src         = data.old_url + '?t=' + Date.now();
+        document.getElementById('new-photo-compare').src = data.new_url + '?t=' + Date.now();
+        document.getElementById('compare').classList.add('show');
+      }
+      toast(data.message, 'success');
+      // Reset editor
+      img = null; originalDataUrl = null;
+      document.getElementById('editor-wrap').classList.remove('show');
+      document.getElementById('up-zone').style.display = '';
+      document.getElementById('new-photo-input').value = '';
+      document.getElementById('quick-upload').value    = '';
+      this.disabled = true;
+    } else {
+      toast(data.message, 'error');
+    }
+  } catch(e) {
+    toast('حدث خطأ أثناء الرفع', 'error');
+  }
+
+  this.disabled = !img;
+  this.innerHTML = origInnerHTML;
+});
+
+// init canvas size on load
+window.addEventListener('load', initCanvas);
+window.addEventListener('resize', () => { initCanvas(); draw(); });
+</script>
+</body>
+</html>

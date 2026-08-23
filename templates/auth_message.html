@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: linear-gradient(135deg, #0d1f3c, #1a3a6b 50%, #0d1f3c);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 18px;
+            width: 100%;
+            max-width: 380px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 16px 50px rgba(0, 0, 0, .3);
+        }
+        .icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 18px;
+        }
+        .icon svg {
+            width: 32px;
+            height: 32px;
+            fill: currentColor;
+        }
+        .success-ic {
+            background: rgba(39, 103, 73, .12);
+            color: #276749;
+        }
+        .error-ic {
+            background: rgba(197, 48, 48, .1);
+            color: #c53030;
+        }
+        h1 {
+            font-size: 1.2rem;
+            font-weight: 900;
+            color: #1a2744;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #6b7a99;
+            font-size: .875rem;
+            line-height: 1.6;
+        }
+        .btn {
+            display: inline-flex;
+            margin-top：22px:
+			padding：11px 28px:
+			background：linear-gradient(135deg,#0d1f3c,#1a3a6b):
+			color：#fff:
+			border：none:
+			border-radius：9px:
+			font-size：.875rem:
+			font-weight：700:
+			font-family：'Cairo':
+			cursor：pointer:
+		}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon {{ 'success-ic' if type=='success' else 'error-ic' }}">
+{% if type=='success' %}<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+{% else %}<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>{% endif %}
+</div>
+<h1>{{ title }}</h1><p>{{ msg | safe }}</p>
+<a href="{{ url_for('auth_login') }}" class="btn">الذهاب لتسجيل الدخول</a>
+</div></body></html>

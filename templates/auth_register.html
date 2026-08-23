@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>إنشاء حساب</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{
+  box-sizing:border-box;
+  margin:0;
+  padding:0
+}
+body{
+  font-family:'Cairo',sans-serif;
+  background:linear-gradient(135deg,#0d1f3c,#1a3a6b 50%,#0d1f3c);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px
+}
+.card{
+  background:#fff;
+  border-radius:20px;
+  width:100%;
+  max-width:440px;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.3)
+}
+.card-top{
+  background:linear-gradient(135deg,#0d1f3c,#1a3a6b);
+  padding:28px;
+  text-align:center
+}
+.card-top h1{
+  color:#fff;
+  font-size:1.1rem;
+  font-weight:900
+}
+.card-top p{
+  color:rgba(255,255,255,.45);
+  font-size:.78rem;
+  margin-top:4px;
+  font-family:'Tajawal'
+}
+form{
+  padding:26px
+}
+.field{
+  margin-bottom:14px
+}
+label{font-size:.82rem;font-weight:600;color:#1a2744;display:block;margin-bottom:5px}
+input{width:100%;padding:10px 13px;border:1.5px solid #dce3ef;border-radius:10px;
+  font-family:'Cairo';font-size:.875rem;color:#1a2744;background:#fafbfd;outline:none;transition:border-color .2s}
+input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);background:#fff}
+.alert{border-radius:8px;padding:10px 13px;font-size:.82rem;margin-bottom:14px;display:flex;align-items:flex-start;gap:8px}
+.alert-error{background:#fff5f5;border:1px solid #feb2b2;color:#c53030}
+.alert-success{background:#f0fff4;border:1px solid #9ae6b4;color:#276749}
+.alert svg{width:15px;height:15px;fill:currentColor;flex-shrink:0;margin-top:1px}
+.hint{font-size:.75rem;color:#6b7a99;margin-top:3px;font-family:'Tajawal'}
+.btn{width:100%;padding:12px;background:linear-gradient(135deg,#0d1f3c,#1a3a6b);
+  color:#fff;border:none;border-radius:10px;font-size:.9rem;font-weight:700;font-family:'Cairo';cursor:pointer}
+.btn:hover{opacity:.92}
+.back{display:block;text-align:center;margin-top:12px;font-size:.78rem;color:#6b7a99;text-decoration:none;font-family:'Tajawal'}
+.back:hover{color:#1a3a6b}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-top">
+    <h1>إنشاء حساب جديد</h1>
+    <p>يجب استخدام إيمبيل الجامعة @{{ domain }}</p>
+  </div>
+  <form method="POST">
+    {% if error %}
+    <div class="alert alert-error">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+      {{ error }}
+    </div>
+    {% endif %}
+    {% if success %}
+    <div class="alert alert-success">
+      <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+      {{ success | safe }}
+    </div>
+    {% endif %}
+    <div class="field">
+      <label>الاسم الكامل</label>
+      <input type="text" name="full_name" required placeholder="الاسم الثلاثي أو الرباعي">
+    </div>
+    <div class="field">
+      <label>البريد الإلكتروني للجامعة</label>
+      <input type="email" name="email" required placeholder="example@{{ domain }}">
+      <p class="hint">يجب أن ينتهي بـ @{{ domain }}</p>
+    </div>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <input type="password" name="password" required placeholder="8 أحرف على الأقل">
+    </div>
+    <div class="field">
+      <label>تأكيد كلمة المرور</label>
+      <input type="password" name="password2" required placeholder="أعد كتابة كلمة المرور">
+    </div>
+    <button type="submit" class="btn">إنشاء الحساب</button>
+    <a href="{{ url_for('auth_login') }}" class="back">لديك حساب بالفعل؟ سجّل الدخول</a>
+  </form>
+</div>
+</body>
+</html>

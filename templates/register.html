@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+{% block title %}تسجيل طالب جديد{% endblock %}
+{% block extra_style %}
+.reg-grid{display:grid;grid-template-columns:1fr 380px;gap:22px;align-items:start}
+.form-section{font-size:.72rem;font-weight:700;letter-spacing:1.2px;color:var(--muted);
+  text-transform:uppercase;margin:18px 0 12px;padding-bottom:8px;border-bottom:1px solid #edf2f7;
+  display:flex;align-items:center;gap:7px}
+.form-section::before{content:'';display:inline-block;width:3px;height:14px;background:var(--gold);border-radius:2px}
+.form-row{display:grid;gap:14px}
+.form-row.cols-2{grid-template-columns:1fr 1fr}
+.form-row.cols-3{grid-template-columns:1fr 1fr 1fr}
+.id-preview{background:linear-gradient(135deg,var(--navy),var(--blue));border-radius:10px;
+  padding:12px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.id-preview span{color:rgba(255,255,255,.55);font-size:.75rem}
+.id-value{font-family:'Courier New',monospace;font-size:1.2rem;font-weight:700;color:var(--gold2);letter-spacing:2px;direction:ltr}
+.id-badge{font-size:.68rem;background:rgba(232,184,75,.2);color:var(--gold2);padding:2px 8px;border-radius:20px}
+
+/* Image editor */
+.img-editor-card{position:sticky;top:70px}
+.upload-zone{border:2px dashed #c8d4e8;border-radius:12px;padding:22px;text-align:center;
+  cursor:pointer;transition:all .2s;background:#fafbfd;position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--blue);background:#f0f4ff}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;padding:0}
+.upload-zone p{color:var(--muted);font-size:.82rem}
+.upload-zone strong{color:var(--blue)}
+.editor-wrap{display:none}
+.editor-wrap.show{display:block}
+.canvas-container{border-radius:12px;overflow:hidden;background:#1a1a2e;
+  border:1px solid rgba(255,255,255,.1);cursor:grab;touch-action:none;position:relative}
+.canvas-container:active{cursor:grabbing}
+#editor-canvas{display:block;width:100%}
+.crop-hint{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);
+  font-size:.68rem;color:rgba(255,255,255,.45);background:rgba(0,0,0,.4);
+  padding:3px 10px;border-radius:20px;pointer-events:none;font-family:'Tajawal';white-space:nowrap}
+
+.tool-bar{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+.tool-btn{flex:1;min-width:55px;padding:7px 6px;border:1px solid #dce3ef;border-radius:8px;
+  background:#fff;color:var(--blue);cursor:pointer;font-size:.75rem;font-weight:600;
+  font-family:'Cairo';display:flex;align-items:center;justify-content:center;gap:4px;transition:all .12s}
+.tool-btn:hover{background:var(--light);border-color:var(--blue)}
+.tool-btn svg{width:13px;height:13px;fill:currentColor}
+.tool-btn.red{color:var(--danger);border-color:rgba(197,48,48,.2)}
+.tool-btn.red:hover{background:rgba(197,48,48,.07)}
+
+.zoom-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.zoom-row svg{width:13px;height:13px;fill:var(--muted);flex-shrink:0}
+.zoom-row input[type=range]{flex:1;accent-color:var(--gold2);cursor:pointer}
+.zoom-val{font-size:.72rem;color:var(--muted);min-width:36px;text-align:left;direction:ltr;font-family:'Courier New'}
+
+.auto-crop-row{display:flex;align-items:center;gap:8px;margin-top:8px;
+  padding:8px 11px;background:#f0f4f9;border-radius:8px}
+.auto-crop-row label{font-size:.78rem;color:var(--text);font-weight:500;cursor:pointer}
+.auto-crop-row input[type=checkbox]{accent-color:var(--blue);width:15px;height:15px;cursor:pointer}
+
+.preview-id-card{background:linear-gradient(155deg,var(--navy),var(--blue));border-radius:14px;
+  overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-top:14px;position:relative}
+.preview-id-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--gold),var(--gold2),var(--gold))}
+.pic-inner{padding:14px;display:flex;align-items:center;gap:12px}
+.pic-thumb{width:64px;height:80px;border-radius:10px;border:2px solid rgba(232,184,75,.4);
+  overflow:hidden;background:rgba(255,255,255,.06);flex-shrink:0}
+#pic-preview{width:100%;height:100%;object-fit:cover;display:block}
+.pic-info-name{font-size:.82rem;font-weight:700;color:#fff;margin-bottom:6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pic-row{display:flex;align-items:center;gap:5px;margin-bottom:3px}
+.pic-row svg{width:11px;height:11px;fill:var(--gold2);opacity:.8}
+.pic-row span{font-size:.7rem;color:rgba(255,255,255,.55);font-family:'Tajawal'}
+.pic-id{font-family:'Courier New',monospace;font-size:.88rem;font-weight:700;
+  color:var(--gold2);letter-spacing:2px;direction:ltr;margin-top:6px}
+
+@media(max-width:900px){
+  .reg-grid{grid-template-columns:1fr}
+  .img-editor-card{position:static}
+  .form-row.cols-2,.form-row.cols-3{grid-template-columns:1fr}
+}
+{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <h1>تسجيل طالب جديد</h1>
+  <span class="badge badge-blue">{{ {'superadmin':'مدير النظام','admin':'مسؤول كلية','staff':'موظف تسجيل'}.get(role,'') }}</span>
+</div>
+
+<div class="content">
+<form id="reg-form" enctype="multipart/form-data" novalidate>
+<!-- Hidden editor state -->
+<input type="hidden" name="rotation"  id="h-rotation"  value="0">
+<input type="hidden" name="flip_h"    id="h-flip"      value="0">
+<input type="hidden" name="zoom"      id="h-zoom"      value="1.0">
+<input type="hidden" name="offset_x"  id="h-ox"        value="0.0">
+<input type="hidden" name="offset_y"  id="h-oy"        value="0.0">
+<input type="hidden" name="auto_crop" id="h-autocrop"  value="1">
+
+<div class="reg-grid">
+
+  <!-- LEFT: form fields -->
+  <div class="card">
+    <div class="card-body">
+      <div class="form-section">البيانات الشخصية</div>
+      <div class="form-row">
+        <div class="field">
+          <label>الاسم الرباعي كاملاً <span class="req">*</span></label>
+          <input type="text" name="full_name" id="full_name" required
+                 placeholder="الاسم الأول / الثاني / الثالث / الأخير" autocomplete="off">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>إيمبيل الطالب (اختياري)</label>
+          <input type="email" name="student_email" id="student_email"
+                 placeholder="student@university.edu.eg">
+          <span style="font-size:.72rem;color:var(--muted);font-family:'Tajawal'">سيُرسل له إيمبيل تأكيد بالرقم</span>
+        </div>
+      </div>
+
+      <div class="form-section">رقم الطالب</div>
+      {% if locked_student_id %}
+        <!-- Student role: ID is locked, shown from their account -->
+        <div style="background:linear-gradient(135deg,var(--navy),var(--blue));border-radius:10px;
+          padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between">
+          <span style="color:rgba(255,255,255,.6);font-size:.78rem">رقمك الجامعي (مقفول)</span>
+          <span style="font-family:'Courier New',monospace;font-size:1.2rem;font-weight:700;
+            color:var(--gold2);letter-spacing:2px;direction:ltr">{{ locked_student_id }}</span>
+        </div>
+        <input type="hidden" name="year" value="{{ prefill_year }}">
+        <input type="hidden" name="code" value="{{ prefill_code }}">
+      {% else %}
+        <div class="form-row cols-3">
+          <div class="field">
+            <label>السنة <span class="req">*</span></label>
+            <select name="year" id="year">
+              <option value="">السنة</option>
+              {% for y in years %}<option value="{{ y }}" {% if y|string == prefill_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label>طول الكود <span class="req">*</span></label>
+            <select id="code_len">
+              <option value="6">6 أرقام (10 إجمالاً)</option>
+              <option value="8">8 أرقام (12 إجمالاً)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>الكود <span class="req">*</span></label>
+            <input type="text" name="code" id="code" maxlength="6" inputmode="numeric"
+                   placeholder="6 أرقام" autocomplete="off" value="{{ prefill_code }}">
+          </div>
+        </div>
+        <div class="id-preview">
+          <span>الرقم الجامعي الكامل</span>
+          <span class="id-value" id="id-display">– – – – – –</span>
+          <span class="id-badge" id="id-badge">– رقم</span>
+        </div>
+      {% endif %}
+
+      <div class="form-section">الكلية</div>
+      <div class="field">
+        <label>اسم الكلية <span class="req">*</span></label>
+        {% if locked_college %}
+          <input type="text" value="{{ locked_college }}" disabled
+                 style="background:#f0f4f9;color:var(--muted);cursor:not-allowed">
+          <input type="hidden" name="college" value="{{ locked_college }}">
+        {% else %}
+          <select name="college" id="college">
+            <option value="">اختر الكلية</option>
+            {% for c in colleges %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+        {% endif %}
+      </div>
+
+      <!-- Duplicate modal – shown when student ID already exists -->
+      <div id="dup-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+        z-index:500;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:16px;padding:28px;max-width:420px;width:90%;
+          text-align:center;animation:mIn .25s ease">
+          <div style="width:52px;height:52px;border-radius:50%;background:rgba(200,148,26,.12);
+            display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+            <svg style="width:26px;height:26px;fill:var(--gold)" viewBox="0 0 24 24">
+              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+          </div>
+          <h3 style="font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:6px">رقم مسجّل مسبقاً</h3>
+          <p id="dup-name-txt" style="color:var(--muted);font-size:.875rem;font-family:'Tajawal';margin-bottom:14px"></p>
+          <!-- Old photo -->
+          <div id="dup-photo-wrap" style="display:none;margin-bottom:16px">
+            <img id="dup-old-img" src="" alt="الصورة الحالية"
+              style="width:90px;height:112px;object-fit:cover;border-radius:10px;
+                border:2px solid rgba(200,148,26,.4);display:block;margin:0 auto 6px">
+            <p style="font-size:.75rem;color:var(--muted);font-family:'Tajawal'">الصورة الحالية المسجّلة</p>
+          </div>
+          <p style="font-size:.82rem;color:var(--text);margin-bottom:18px">هل تريد تغيير الصورة لهذا الطالب؟</p>
+          <div style="display:flex;gap:10px">
+            <button onclick="closeDupModal()" class="btn btn-outline" style="flex:1">لا، إلغاء</button>
+            <button onclick="updateExistingPhoto()" class="btn btn-gold" style="flex:1" id="dup-update-btn">
+              نعم، تحديث الصورة
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full" id="submit-btn" style="margin-top:6px">
+        <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        <span id="btn-txt">تسجيل البيانات</span>
+        <div class="spin" id="spinner"></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- RIGHT: image editor -->
+  <div class="img-editor-card">
+    <div class="card">
+      <div class="card-header">
+        <svg style="width:18px;height:18px;fill:var(--gold)" viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M18.2 4H16.4L14.8 2H9.2L7.6 4H5.8C4.8 4 4 4.8 4 5.8v12.4C4 19.2 4.8 20 5.8 20h12.4c1 0 1.8-.8 1.8-1.8V5.8C20 4.8 19.2 4 18.2 4z"/></svg>
+        <h2>الصورة الشخصية</h2>
+      </div>
+      <div class="card-body">
+        <!-- Drop zone -->
+        <div class="upload-zone" id="upload-zone">
+          <input type="file" name="image" id="image" accept=".jpg,.jpeg">
+          <p style="font-size:1.6rem;margin-bottom:6px">📷</p>
+          <p><strong>انقر لاختيار الصورة</strong> أو اسحبها</p>
+          <p style="margin-top:5px;font-size:.72rem">JPG فقط · حد 5 MB · وجه واضح</p>
+        </div>
+
+        <!-- Canvas editor -->
+        <div class="editor-wrap" id="editor-wrap">
+          <div class="canvas-container" id="canvas-wrap">
+            <canvas id="editor-canvas" height="280"></canvas>
+            <div class="crop-hint">اسحب لتحريك · زووم للتكبير</div>
+          </div>
+
+          <div class="tool-bar">
+            <button type="button" class="tool-btn" onclick="rotateDeg(-90)">
+              <svg viewBox="0 0 24 24"><path d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>
+              يسار
+            </button>
+            <button type="button" class="tool-btn" onclick="rotateDeg(90)">
+              <svg viewBox="0 0 24 24"><path d="M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45z"/></svg>
+              يمين
+            </button>
+            <button type="button" class="tool-btn" onclick="rotateDeg(180)">
+              <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+              قلب
+            </button>
+            <button type="button" class="tool-btn" onclick="flipImg()">
+              <svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zm0 8h2v-2h-2v2zM3 5v14l7-7-7-7zm14-2v2h2V3h-2zm-4 18h2v-2h-2v2zM19 3h-2v2h2V3z"/></svg>
+              مرآة
+            </button>
+            <button type="button" class="tool-btn red" onclick="resetEditor()">
+              <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05L6.64 18.36A8.98 8.98 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
+              إعادة
+            </button>
+          </div>
+
+          <div class="zoom-row">
+            <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/></svg>
+            <input type="range" id="zoom-slider" min="50" max="300" value="100" step="1"
+                   oninput="onZoom(this.value)">
+            <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM7 9h5v1H7z"/></svg>
+            <span class="zoom-val" id="zoom-val">100%</span>
+          </div>
+
+          <!-- Auto-crop toggle -->
+          <div class="auto-crop-row">
+            <input type="checkbox" id="auto-crop-chk" checked onchange="toggleAutoCrop(this.checked)">
+            <label for="auto-crop-chk">قص تلقائي مُركَّز على الوجه (400×500)</label>
+          </div>
+
+          <!-- ID card preview -->
+          <div class="preview-id-card">
+            <div class="pic-inner">
+              <div class="pic-thumb"><img id="pic-preview" src="" alt=""></div>
+              <div style="flex:1;min-width:0">
+                <div class="pic-info-name" id="prev-name">الاسم الرباعي</div>
+                <div class="pic-row">
+                  <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+                  <span id="prev-college">الكلية</span>
+                </div>
+                <div class="pic-id" id="prev-id">– – –</div>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" onclick="document.getElementById('image').click()"
+            style="width:100%;margin-top:9px;background:none;border:1.5px dashed #c8d4e8;
+              border-radius:8px;padding:7px;font-size:.78rem;color:var(--muted);cursor:pointer;
+              font-family:'Cairo';transition:all .15s"
+            onmouseover="this.style.borderColor='var(--blue)'"
+            onmouseout="this.style.borderColor='#c8d4e8'">
+            تغيير الصورة
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</form>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// ── Arabic normalisation ──
+const AR={'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};
+const toEng=s=>s.replace(/[٠-٩]/g,d=>AR[d]);
+
+// ── Live form → ID preview card ──
+function updateId(){
+  const y=document.getElementById('year').value;
+  const c=toEng(document.getElementById('code').value.trim());
+  const l=parseInt(document.getElementById('code_len').value);
+  document.getElementById('code').maxLength=l;
+  document.getElementById('code').placeholder=l+' أرقام';
+  const full=(y&&c.length===l)?y+c:'– – – – – –';
+  document.getElementById('id-display').textContent=full;
+  document.getElementById('id-badge').textContent=(y&&c.length===l)?(4+l)+' رقم':'– رقم';
+  document.getElementById('prev-id').textContent=full;
+  document.getElementById('prev-year')||0;
+}
+['year','code','code_len'].forEach(id=>document.getElementById(id).addEventListener('input',updateId));
+document.getElementById('code_len').addEventListener('change',updateId);
+document.getElementById('code').addEventListener('input',function(){
+  this.value=toEng(this.value).replace(/\D/g,''); updateId();
+});
+document.getElementById('full_name').addEventListener('input',function(){
+  document.getElementById('prev-name').textContent=this.value||'الاسم الرباعي';
+});
+document.getElementById('college').addEventListener('change',function(){
+  document.getElementById('prev-college').textContent=this.value||'الكلية';
+});
+
+// ══ CANVAS EDITOR ═══════════════════════════════════════════════════════
+const canvas=document.getElementById('editor-canvas');
+const ctx=canvas.getContext('2d');
+let img=null,state={rot:0,flipH:false,scale:1,ox:0,oy:0},drag={on:false};
+let originalBytes=null;
+
+function initCanvas(){
+  const wrap=document.getElementById('canvas-wrap');
+  canvas.width=wrap.clientWidth||336; canvas.height=280;
+}
+function draw(){
+  if(!img)return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width/2+state.ox,canvas.height/2+state.oy);
+  ctx.rotate(state.rot*Math.PI/180);
+  if(state.flipH)ctx.scale(-1,1);
+  const rad=state.rot*Math.PI/180,sin=Math.abs(Math.sin(rad)),cos=Math.abs(Math.cos(rad));
+  const fw=canvas.width/(img.width*cos+img.height*sin);
+  const fh=canvas.height/(img.width*sin+img.height*cos);
+  const s=Math.min(fw,fh)*state.scale;
+  ctx.drawImage(img,-img.width*s/2,-img.height*s/2,img.width*s,img.height*s);
+  ctx.restore();
+  // update preview thumb
+  document.getElementById('pic-preview').src=canvas.toDataURL('image/jpeg',.6);
+}
+function loadFromDataUrl(url){
+  img=new Image(); img.onload=()=>{initCanvas();draw();}; img.src=url;
+}
+
+function rotateDeg(d){state.rot=(state.rot+d+360)%360;draw();}
+function flipImg(){state.flipH=!state.flipH;draw();}
+function onZoom(v){state.scale=v/100;document.getElementById('zoom-val').textContent=v+'%';
+  document.getElementById('h-zoom').value=(v/100).toFixed(2);draw();}
+function resetEditor(){
+  state={rot:0,flipH:false,scale:1,ox:0,oy:0};
+  document.getElementById('zoom-slider').value=100;
+  document.getElementById('zoom-val').textContent='100%';
+  if(originalBytes){loadFromDataUrl(originalBytes);}else{draw();}
+}
+function toggleAutoCrop(v){document.getElementById('h-autocrop').value=v?'1':'0';}
+
+// Drag pan
+function gp(e){return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};}
+canvas.addEventListener('mousedown',e=>{drag={on:true,x:gp(e).x,y:gp(e).y,ox:state.ox,oy:state.oy}});
+canvas.addEventListener('touchstart',e=>{drag={on:true,x:gp(e).x,y:gp(e).y,ox:state.ox,oy:state.oy}},{passive:true});
+window.addEventListener('mousemove',e=>{if(!drag.on)return;const p=gp(e);state.ox=drag.ox+(p.x-drag.x);state.oy=drag.oy+(p.y-drag.y);draw();
+  document.getElementById('h-ox').value=(state.ox/(canvas.width/2)).toFixed(3);
+  document.getElementById('h-oy').value=(state.oy/(canvas.height/2)).toFixed(3);});
+window.addEventListener('mouseup',()=>drag.on=false);
+canvas.addEventListener('touchmove',e=>{if(!drag.on)return;const p=gp(e);state.ox=drag.ox+(p.x-drag.x);state.oy=drag.oy+(p.y-drag.y);draw();},{passive:true});
+canvas.addEventListener('touchend',()=>drag.on=false);
+canvas.addEventListener('wheel',e=>{e.preventDefault();state.scale=Math.max(.5,Math.min(3,state.scale*(e.deltaY<0?1.08:.93)));
+  const pct=Math.round(state.scale*100);document.getElementById('zoom-slider').value=pct;
+  document.getElementById('zoom-val').textContent=pct+'%';
+  document.getElementById('h-zoom').value=state.scale.toFixed(2);draw();},{passive:false});
+
+// Sync hidden fields
+setInterval(()=>{
+  document.getElementById('h-rotation').value=state.rot;
+  document.getElementById('h-flip').value=state.flipH?'1':'0';
+},300);
+
+// ── File input ──
+document.getElementById('image').addEventListener('change',function(){
+  const f=this.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    originalBytes=e.target.result;
+    state={rot:0,flipH:false,scale:1,ox:0,oy:0};
+    document.getElementById('zoom-slider').value=100;
+    document.getElementById('zoom-val').textContent='100%';
+    loadFromDataUrl(originalBytes);
+    document.getElementById('upload-zone').style.display='none';
+    document.getElementById('editor-wrap').classList.add('show');
+  };
+  r.readAsDataURL(f);
+});
+
+// Drag & drop onto upload zone
+const uz=document.getElementById('upload-zone');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag')});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
+uz.addEventListener('drop',e=>{
+  e.preventDefault();uz.classList.remove('drag');
+  const f=e.dataTransfer.files[0];if(!f)return;
+  const dt=new DataTransfer();dt.items.add(f);
+  document.getElementById('image').files=dt.files;
+  document.getElementById('image').dispatchEvent(new Event('change'));
+});
+
+// ── FORM SUBMIT ──
+let _dupStudentId = null;
+
+document.getElementById('reg-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  const sp  = document.getElementById('spinner');
+  const bt  = document.getElementById('btn-txt');
+  btn.disabled = true; sp.style.display = 'block'; bt.textContent = 'جارٍ التسجيل…';
+
+  try {
+    const codeField = document.getElementById('code');
+    if (codeField) codeField.value = toEng(codeField.value);
+    const fd  = new FormData(this);
+    const res = await fetch('/register', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast(data.message, 'success');
+      resetForm();
+      if (data.card_url) setTimeout(() => window.open(data.card_url, '_blank'), 1400);
+
+    } else if (data.duplicate) {
+      // Show duplicate modal with old photo
+      _dupStudentId = data.existing_id;
+      document.getElementById('dup-name-txt').textContent =
+        `الطالب: ${data.existing_name} – رقم: ${data.existing_id}`;
+      const photoWrap = document.getElementById('dup-photo-wrap');
+      const oldImg    = document.getElementById('dup-old-img');
+      if (data.existing_img) {
+        oldImg.src = data.existing_img + '?t=' + Date.now();
+        photoWrap.style.display = 'block';
+      } else {
+        photoWrap.style.display = 'none';
+      }
+      const modal = document.getElementById('dup-modal');
+      modal.style.display = 'flex';
+      modal.onclick = e => { if (e.target === modal) closeDupModal(); };
+
+    } else {
+      showToast(data.message, 'error');
+    }
+  } catch (err) {
+    showToast('تعذر الاتصال بالخادم', 'error');
+  } finally {
+    btn.disabled = false; sp.style.display = 'none'; bt.textContent = 'تسجيل البيانات';
+  }
+});
+
+function closeDupModal() {
+  document.getElementById('dup-modal').style.display = 'none';
+  _dupStudentId = null;
+}
+
+async function updateExistingPhoto() {
+  if (!_dupStudentId) return;
+  const imageFile = document.getElementById('image').files[0];
+  if (!imageFile) {
+    showToast('يرجى اختيار صورة في المحرر أولاً', 'warn'); closeDupModal(); return;
+  }
+  const btn = document.getElementById('dup-update-btn');
+  btn.disabled = true; btn.textContent = 'جارٍ التحديث…';
+
+  const fd = new FormData();
+  fd.append('image',     imageFile);
+  fd.append('rotation',  document.getElementById('h-rotation').value);
+  fd.append('flip_h',    document.getElementById('h-flip').value);
+  fd.append('zoom',      document.getElementById('h-zoom').value);
+  fd.append('offset_x',  document.getElementById('h-ox').value);
+  fd.append('offset_y',  document.getElementById('h-oy').value);
+  fd.append('auto_crop', document.getElementById('h-autocrop').value);
+
+  try {
+    const res  = await fetch(`/student/${_dupStudentId}/update-photo`, { method: 'POST', body: fd });
+    const data = await res.json();
+    closeDupModal();
+    if (data.success) {
+      showToast(`✅ تم تحديث صورة الطالب ${_dupStudentId}`, 'success');
+      resetForm();
+    } else {
+      showToast(data.message, 'error');
+    }
+  } catch (e) {
+    showToast('خطأ في التحديث', 'error');
+  }
+  btn.disabled = false; btn.textContent = 'نعم، تحديث الصورة';
+}
+
+function resetForm() {
+  document.getElementById('reg-form').reset();
+  state = { rot: 0, flipH: false, scale: 1, ox: 0, oy: 0 };
+  img = null; originalBytes = null;
+  document.getElementById('editor-wrap').classList.remove('show');
+  document.getElementById('upload-zone').style.display = '';
+  document.getElementById('id-display').textContent  = '– – – – – –';
+  document.getElementById('id-badge').textContent    = '– رقم';
+  document.getElementById('prev-name').textContent   = 'الاسم الرباعي';
+  const pc = document.getElementById('prev-college');
+  if (pc) pc.textContent = 'الكلية';
+  document.getElementById('prev-id').textContent    = '– – –';
+  document.getElementById('pic-preview').src        = '';
+  document.getElementById('h-rotation').value = '0';
+  document.getElementById('h-flip').value     = '0';
+  document.getElementById('h-zoom').value     = '1.0';
+  document.getElementById('h-ox').value       = '0.0';
+  document.getElementById('h-oy').value       = '0.0';
+  document.getElementById('zoom-slider').value    = 100;
+  document.getElementById('zoom-val').textContent = '100%';
+  ctx && ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+window.addEventListener('load', initCanvas);
+window.addEventListener('resize', () => { initCanvas(); draw(); });
+</script>
+{% endblock %}

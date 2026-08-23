@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تسجيل الدخول – نظام القيد</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{
+  box-sizing:border-box;
+  margin:0;
+  padding:0
+}
+body{
+  font-family:'Cairo',sans-serif;
+  background:linear-gradient(135deg,#0d1f3c,#1a3a6b 50%,#0d1f3c);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px
+}
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background:radial-gradient(ellipse at 25% 55%,rgba(200,148,26,.08) 0%,transparent 55%);
+  pointer-events:none
+}
+.card{
+  background:#fff;
+  border-radius:20px;
+  width:100%;
+  max-width:420px;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.3);
+  animation:up .45s ease
+}
+@keyframes up{
+  from{
+    opacity:0;
+  transform:translateY(20px)
+}to{
+  opacity:1;
+  transform:translateY(0)
+}
+}
+.card-top{
+  background:linear-gradient(135deg,#0d1f3c,#1a3a6b);
+  padding:32px;
+  text-align:center
+}
+.logo{
+  width:56px;
+  height:56px;
+  background:rgba(232,184,75,.15);
+  border:2px solid rgba(232,184,75,.3);
+  border-radius:14px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:12px
+}
+.logo svg{
+  width:28px;
+  height:28px;
+  fill:#e8b84b
+}
+.card-top h1{
+  color:#fff;
+  font-size:1.2rem;
+  font-weight:900
+}
+.card-top p{
+  color:rgba(255,255,255,.45);
+  font-size:.8rem;
+  margin-top:5px;
+  font-family:'Tajawal'
+}
+form{
+  padding:28px
+}
+.field{
+  margin-bottom:16px
+}
+label{
+  font-size:.82rem;
+  font-weight:600;
+  color:#1a2744;
+  display:block;
+  margin-bottom:6px
+}
+input{
+  width:100%;
+  padding:11px 14px;
+  border:1.5px solid #dce3ef;
+  border-radius:10px;
+  font-family:'Cairo';
+  font-size:.875rem;
+  color:#1a2744;
+  background:#fafbfd;
+  outline:none;
+  transition:border-color .2s
+}
+input:focus{
+  border-color:#1a3a6b;
+  box-shadow:0 0 0 3px rgba(26,58,107,.08);
+  background:#fff
+}
+.domain-hint{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  background:#f0f4f9;
+  border-radius:8px;
+  padding:8px 12px;
+  margin-bottom:16px;
+  font-size:.78rem;
+  color:#6b7a99;
+  font-family:'Tajawal'
+}
+.domain-hint svg{
+  width:14px;
+  height:14px;
+  fill:#c8941a;
+  flex-shrink:0
+}
+.error-box{
+  background:#fff5f5;
+  border:1px solid #feb2b2;
+  color:#c53030;
+  border-radius:8px;
+  padding:10px 13px;
+  font-size:.82rem;
+  margin-bottom:14px;
+  display:flex;
+  align-items:center;
+  gap:8px
+}
+.error-box svg{
+  width:15px;
+  height:15px;
+  fill:currentColor;
+  flex-shrink:0
+}
+.btn{
+  width:100%;
+  padding:13px;
+  background:linear-gradient(135deg,#0d1f3c,#1a3a6b);
+  color:#fff;
+  border:none;
+  border-radius:10px;
+  font-size:.95rem;
+  font-weight:700;
+  font-family:'Cairo';
+  cursor:pointer;
+  transition:opacity .2s}
+.btn:hover{
+  opacity:.92
+}
+.links{
+  display:flex;
+  justify-content:space-between;
+  margin-top:14px;
+  flex-wrap:wrap;
+  gap:6px
+}
+.links a{
+  font-size:.78rem;
+  color:#6b7a99;
+  text-decoration:none;
+  font-family:'Tajawal'
+}
+.links a:hover{
+  color:#1a3a6b
+}
+footer{
+  color:rgba(255,255,255,.2);
+  font-size:.72rem;
+  text-align:center;
+  margin-top:20px;
+  font-family:'Tajawal'
+}
+footer a{
+  color:#e8b84b;
+  text-decoration:none
+}
+</style>
+</head>
+<body>
+<div>
+<div class="card">
+  <div class="card-top">
+    <div class="logo">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+      </svg>
+    </div>
+    <h1>تسجيل الدخول</h1>
+    <p>نظام القيد والتسجيل الجامعي</p>
+  </div>
+  <form method="POST">
+    {% if error %}
+    <div class="error-box" style="margin:0 0 14px">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+      </svg>
+      {{ error }}
+    </div>
+    {% endif %}
+    <div class="domain-hint">
+      <svg viewBox="0 0 24 24">
+        <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+      </svg>
+      استخدم إيمبيل الجامعة: @{{ domain }}
+    </div>
+    <div class="field">
+      <label>البريد الإلكتروني للجامعة</label>
+      <input type="email" name="email" required autofocus placeholder="example@{{ domain }}" autocomplete="email">
+    </div>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <input type="password" name="password" required placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button type="submit" class="btn">دخول</button>
+    <div class="links">
+      <a href="{{ url_for('auth_register') }}">إنشاء حساب جديد</a>
+      <a href="{{ url_for('auth_forgot') }}">نسيت كلمة المرور؟</a>
+      <a href="{{ url_for('student_login') }}">دخول الطلاب</a>
+    </div>
+  </form>
+</div>
+<footer><p>
+            © 2026 – 
+            <a href="https://www.linkedin.com/in/abdelrahman-oraby-92588a2a5" target="_blank" style="text-decoration: none;">عبدو عرابي</a> 
+            & 
+            <a href="https://www.linkedin.com/in/mohamed-gehad-767a18390" target="_blank" style="text-decoration: none; ">جهاااد</a>
+        </p></footer>
+</div>
+
+</body>
+</html>

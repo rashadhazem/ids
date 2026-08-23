@@ -1,0 +1,628 @@
+{% extends "base.html" %}
+{% block title %}إدارة الطلاب{% endblock %}
+{% block extra_style %}
+.filter-bar{
+  background:#fff;
+  border-radius:14px;
+  padding:16px 20px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:flex-end;
+  border:1px solid #dce3ef;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+  margin-bottom:20px
+}
+.filter-field{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  flex:1;
+  min-width:150px
+}
+.filter-field label{
+  font-size:.75rem;
+  font-weight:600;
+  color:var(--muted)
+}
+.filter-field input,.filter-field select{
+  padding:8px 11px;
+  border:1.5px solid #dce3ef;
+  border-radius:8px;
+  font-family:'Cairo';
+  font-size:.82rem;
+  color:var(--text);
+  background:#fafbfd;
+  outline:none;
+  transition:border-color .2s
+}
+.filter-field input:focus,.filter-field select:focus{
+  border-color:var(--blue)
+}
+.student-id-badge{
+  font-family:'Courier New',monospace;
+  font-size:.78rem;
+  font-weight:700;
+  background:rgba(26,58,107,.08);
+  color:var(--blue);
+  padding:3px 8px;
+  border-radius:6px;
+  letter-spacing:1px;
+  direction:ltr;
+  display:inline-block
+}
+.college-tag{
+  font-size:.72rem;
+  background:rgba(200,148,26,.1);
+  color:var(--gold);
+  padding:3px 8px;
+  border-radius:20px;
+  font-weight:600
+}
+.year-tag{
+  font-size:.72rem;
+  background:rgba(26,58,107,.08);
+  color:var(--blue);
+  padding:3px 8px;
+  border-radius:20px;
+  font-weight:600
+}
+.results-count{
+  font-size:.78rem;
+  color:var(--muted);
+  background:var(--light);
+  padding:3px 10px;
+  border-radius:20px
+}
+.loader-row td{text-align:center;padding:40px}
+.loader-spin{
+  width:32px;
+  height:32px;
+  border:3px solid #dce3ef;
+  border-top-color:var(--blue);
+  border-radius:50%;
+  animation:rot .6s linear infinite;
+  display:inline-block
+}
+@keyframes rot{
+  to{
+    transform:rotate(360deg)
+  }
+}
+.empty-state{
+  text-align:center;
+  padding:50px 20px;
+  color:var(--muted)
+}
+.empty-state svg{
+  width:50px;
+  height:50px;
+  fill:#dce3ef;
+  display:block;
+  margin:0 auto 12px
+}
+.users-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:14px;
+  margin-top:16px
+}
+.user-card{
+  background:#fff;
+  border-radius:12px;
+  padding:16px;
+  border:1px solid #dce3ef;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04)
+}
+.user-av{
+  width:42px;
+  height:42px;
+  border-radius:50%;
+  background:var(--light);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:700;
+  font-size:.95rem;
+  color:var(--blue);
+  flex-shrink:0;
+  border:2px solid #dce3ef
+}
+.user-info{
+  flex:1;
+  min-width:0
+}
+.user-info strong{
+  display:block;
+  font-size:.85rem;
+  color:var(--text);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis
+}
+.user-info span{
+  font-size:.72rem;
+  color:var(--muted);
+  font-family:'Tajawal'
+}
+.audit-action{
+  font-size:.72rem;
+  background:rgba(26,58,107,.08);
+  color:var(--blue);
+  padding:2px 7px;
+  border-radius:5px;
+  font-family:'Courier New';
+  font-weight:700
+}
+.tabs{
+  display:flex;
+  gap:4px;
+  margin-bottom:20px;
+  border-bottom:2px solid #dce3ef
+}
+.tab{
+  padding:9px 18px;
+  font-size:.875rem;
+  font-weight:600;
+  color:var(--muted);
+  cursor:pointer;
+  border:none;
+  background:none;
+  font-family:'Cairo';
+  border-bottom:2px solid transparent;
+  margin-bottom:-2px;transition:all .15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+.modal-form .field{
+  margin-bottom:14px
+}
+.modal-form label{
+  font-size:.82rem;
+  font-weight:600;
+  color:var(--text);
+  display:block;
+  margin-bottom:5px
+}
+.modal-form input,.modal-form select{
+  width:100%;
+  padding:9px 12px;
+  border:1.5px solid #dce3ef;
+  border-radius:9px;
+  font-family:'Cairo';
+  font-size:.875rem;
+  outline:none;
+  transition:border-color .2s
+}
+.modal-form input:focus,.modal-form select:focus{
+  border-color:var(--blue)
+}
+{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <h1>إدارة الطلاب</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="results-count" id="total-badge">جارٍ التحميل…</span>
+    {% if role in ['superadmin','admin'] %}
+    <a href="{{ url_for('admin_export') }}" class="btn btn-success btn-sm">
+      <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24">
+        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+      </svg>
+      تصدير Excel
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="content">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('students',this)">قائمة الطلاب</button>
+    {% if role == 'superadmin' %}
+    <button class="tab" onclick="switchTab('users',this)">المستخدمون</button>
+    <button class="tab" onclick="switchTab('audit',this)">سجل العمليات</button>
+    {% endif %}
+  </div>
+
+  <!-- STUDENTS -->
+  <div class="tab-panel active" id="panel-students">
+    <div class="filter-bar">
+      <div class="filter-field">
+        <label>بحث بالاسم أو الرقم</label>
+        <input type="text" id="q" placeholder="ابحث هنا…">
+      </div>
+      <div class="filter-field">
+        <label>السنة</label>
+        <select id="year-filter">
+          <option value="">كل السنوات</option>
+          {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="filter-field">
+        <label>الكلية</label>
+        <select id="college-filter">
+          <option value="">كل الكليات</option>
+          {% for c in colleges %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;align-self:flex-end">
+        <button class="btn btn-primary btn-sm" onclick="loadStudents(1)">بحث</button>
+        <button class="btn btn-outline btn-sm" onclick="resetFilters()">مسح</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="justify-content:space-between">
+        <h2>الطلاب المسجلون</h2>
+        <span class="results-count" id="results-count">–</span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الصورة</th><th>رقم الطالب</th><th>الاسم الكامل</th>
+              <th>السنة</th><th>الكلية</th><th>تاريخ التسجيل</th><th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="students-tbody">
+            <tr class="loader-row"><td colspan="7"><div class="loader-spin"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pager" id="pagination"></div>
+    </div>
+  </div>
+
+  <!-- USERS -->
+  {% if role == 'superadmin' %}
+  <div class="tab-panel" id="panel-users">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:.95rem;font-weight:700">المستخدمون المسجلون</h2>
+      <button class="btn btn-primary btn-sm" onclick="openCreateUser()">+ إضافة مستخدم</button>
+    </div>
+    <div class="users-grid" id="users-grid">
+      <div style="color:var(--muted);font-size:.85rem">جارٍ التحميل…</div>
+    </div>
+  </div>
+
+  <!-- AUDIT -->
+  <div class="tab-panel" id="panel-audit">
+    <div class="card">
+      <div class="card-header"><h2>سجل العمليات الكامل</h2></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>الإجراء</th><th>المستخدم</th><th>البريد</th><th>الهدف</th><th>التوقيت</th></tr>
+          </thead>
+          <tbody id="audit-tbody">
+            <tr class="loader-row"><td colspan="5"><div class="loader-spin"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pager" id="audit-pager"></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- DELETE MODAL -->
+<div class="modal-bg" id="del-modal">
+  <div class="modal">
+    <div style="width:52px;height:52px;border-radius:50%;background:rgba(197,48,48,.1);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+      <svg style="width:26px;height:26px;fill:var(--danger)" viewBox="0 0 24 24">
+        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+      </svg>
+    </div>
+    <h3>تأكيد الحذف</h3>
+    <p>هل أنت متأكد؟ لا يمكن التراجع.</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" style="flex:1" onclick="closeDel()">إلغاء</button>
+      <button class="btn btn-danger" style="flex:1" id="confirm-del-btn">حذف نهائياً</button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE USER MODAL -->
+{% if role == 'superadmin' %}
+<div class="modal-bg" id="create-user-modal">
+  <div class="modal" style="max-width:460px;text-align:right">
+    <h3 style="text-align:right;margin-bottom:16px">إضافة مستخدم جديد</h3>
+    <div class="modal-form">
+      <div class="field">
+        <label>الاسم الكامل</label>
+        <input type="text" id="nu-name" placeholder="الاسم الكامل">
+      </div>
+      <div class="field">
+        <label>البريد الإلكتروني (@{{ domain }})</label>
+        <input type="email" id="nu-email" placeholder="user@{{ domain }}">
+      </div>
+      <div class="field">
+        <label>الدور</label>
+        <select id="nu-role" onchange="document.getElementById('nu-college-wrap').style.display=this.value==='admin'?'block':'none'">
+          {% for k,v in roles.items() %}
+            {% if k != 'student' %}
+              <option value="{{ k }}">{{ v }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" id="nu-college-wrap" style="display:none">
+        <label>الكلية</label>
+        <select id="nu-college">
+          <option value="">اختر الكلية</option>
+          {% for c in colleges %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div id="nu-msg" style="font-size:.82rem;padding:8px 11px;border-radius:7px;margin-bottom:6px;display:none"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" style="flex:1" onclick="closeCreateUser()">إلغاء</button>
+      <button class="btn btn-primary" style="flex:1" id="create-user-btn" onclick="submitCreateUser()">
+        إنشاء وإرسال بريد التفعيل
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pendingDelId = null, curPage = 1;
+const ROLE = "{{ role }}";
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'users') loadUsers();
+  if (name === 'audit') loadAudit(1);
+}
+
+function fmt(s) {
+  if (!s) return '–';
+  return String(s).split('.')[0].replace('T', ' ');
+}
+
+async function loadStudents(page = 1) {
+  curPage = page;
+  const q       = document.getElementById('q').value;
+  const year    = document.getElementById('year-filter').value;
+  const college = document.getElementById('college-filter').value;
+  document.getElementById('students-tbody').innerHTML =
+    '<tr class="loader-row"><td colspan="7"><div class="loader-spin"></div></td></tr>';
+
+  const res  = await fetch('/admin/students?' + new URLSearchParams({page, q, year, college}));
+  const data = await res.json();
+
+  document.getElementById('total-badge').textContent   = data.total + ' طالب';
+  document.getElementById('results-count').textContent = data.total + ' نتيجة';
+
+  const tbody = document.getElementById('students-tbody');
+  if (!data.students.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+      <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12z"/></svg>
+      <p>لا توجد نتائج مطابقة</p></div></td></tr>`;
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = data.students.map(s => {
+    const imgUrl = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
+      ? s.image_path : '/static/' + (s.image_path || '');
+    return `<tr>
+      <td><img src="${imgUrl}" class="student-thumb" onerror="this.style.opacity=0" alt=""></td>
+      <td><span class="student-id-badge">${s.student_id}</span></td>
+      <td style="font-weight:600">${s.full_name}</td>
+      <td><span class="year-tag">${s.year}</span></td>
+      <td><span class="college-tag">${s.college}</span></td>
+      <td style="color:var(--muted);font-size:.74rem;direction:ltr">${fmt(s.created_at)}</td>
+      <td>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          <a href="/student/${s.student_id}" target="_blank" class="btn btn-outline btn-sm" title="عرض البطاقة">
+            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+            </svg>
+          </a>
+          ${ROLE !== 'staff' ? `
+          <button onclick="confirmDel(${s.id})" class="btn btn-sm"
+            style="background:rgba(197,48,48,.08);color:var(--danger);border:1px solid rgba(197,48,48,.2)" title="حذف">
+            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            </svg>
+          </button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  buildPager(data.page, data.pages, 'pagination', loadStudents);
+}
+
+function buildPager(page, pages, containerId, fn) {
+  const pg = document.getElementById(containerId);
+  if (pages <= 1) { pg.innerHTML = ''; return; }
+  const fnName = fn.name || 'loadStudents';
+  let html = '';
+  if (page > 1) html += `<button class="pg-btn" onclick="${fnName}(${page-1})">‹</button>`;
+  for (let i = 1; i <= pages; i++) {
+    if (i===1 || i===pages || Math.abs(i-page)<=2)
+      html += `<button class="pg-btn${i===page?' active':''}" onclick="${fnName}(${i})">${i}</button>`;
+    else if (Math.abs(i-page)===3)
+      html += `<span style="padding:0 3px;color:var(--muted)">…</span>`;
+  }
+  if (page < pages) html += `<button class="pg-btn" onclick="${fnName}(${page+1})">›</button>`;
+  pg.innerHTML = html;
+}
+
+function resetFilters() {
+  ['q','year-filter','college-filter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el.tagName === 'SELECT') el.value = '';
+    else el.value = '';
+  });
+  loadStudents(1);
+}
+document.getElementById('q').addEventListener('keydown', e => { if(e.key==='Enter') loadStudents(1); });
+
+// Delete
+function confirmDel(id) {
+  pendingDelId = id;
+  document.getElementById('del-modal').classList.add('open');
+}
+function closeDel() {
+  document.getElementById('del-modal').classList.remove('open');
+  pendingDelId = null;
+}
+document.getElementById('confirm-del-btn').addEventListener('click', async () => {
+  if (!pendingDelId) return;
+  const id = pendingDelId; closeDel();
+  const res  = await fetch('/admin/delete/' + id, { method: 'DELETE' });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadStudents(curPage);
+});
+document.getElementById('del-modal').addEventListener('click', function(e) { if(e.target===this) closeDel(); });
+
+// Users — grouped by college
+async function loadUsers() {
+  const res  = await fetch('/admin/users');
+  const data = await res.json();
+  const rl   = { superadmin:'مدير النظام', admin:'مسؤول كلية', staff:'موظف تسجيل', student:'طالب' };
+  const grid = document.getElementById('users-grid');
+  const grouped = data.grouped || {};
+
+  if (!Object.keys(grouped).length) {
+    grid.innerHTML = '<p style="color:var(--muted)">لا يوجد مستخدمون</p>';
+    return;
+  }
+
+  grid.innerHTML = Object.entries(grouped).map(([college, members]) => {
+    const nonStudents = members.filter(u => u.role !== 'student');
+    const students    = members.filter(u => u.role === 'student');
+    const staffCards  = nonStudents.map(u => userCard(u, rl)).join('');
+    const stuSummary  = students.length
+      ? `<div style="background:rgba(26,58,107,.05);border-radius:10px;padding:10px 14px;
+           margin-top:8px;display:flex;align-items:center;justify-content:space-between">
+           <span style="font-size:.82rem;color:var(--muted)">الطلاب المسجلون</span>
+           <span class="badge badge-blue">${students.length} طالب</span>
+         </div>` : '';
+    return `
+      <div style="border:1px solid #dce3ef;border-radius:14px;overflow:hidden;margin-bottom:16px">
+        <div style="background:linear-gradient(135deg,var(--navy),var(--blue));
+          padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px">
+            <svg style="width:16px;height:16px;fill:var(--gold2)" viewBox="0 0 24 24">
+              <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/>
+            </svg>
+            <span style="color:#fff;font-size:.875rem;font-weight:700">${college}</span>
+          </div>
+          <span style="font-size:.72rem;background:rgba(232,184,75,.2);color:var(--gold2);
+            padding:2px 9px;border-radius:20px">${members.length} مستخدم</span>
+        </div>
+        <div style="padding:12px">
+          ${staffCards || '<p style="color:var(--muted);font-size:.8rem;padding:4px 0">لا يوجد موظفون في هذه الكلية</p>'}
+          ${stuSummary}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function userCard(u, rl) {
+  const roleBadge = u.role === 'superadmin' ? 'badge-blue'
+                  : u.role === 'admin'      ? 'badge-gold'
+                  : 'badge-green';
+  return `
+    <div class="user-card" style="margin-bottom:8px">
+      <div class="user-av">${(u.full_name||'?')[0]}</div>
+      <div class="user-info">
+        <strong>${u.full_name}</strong>
+        <span style="display:block">${u.email}</span>
+        <span style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">
+          <span class="badge ${roleBadge}">${rl[u.role]||u.role}</span>
+          ${!u.email_verified ? '<span class="badge badge-red">غير مفعّل</span>' : ''}
+          ${!u.is_active ? '<span class="badge badge-red">موقوف</span>' : ''}
+        </span>
+      </div>
+      <button onclick="toggleUser(${u.id})" class="btn btn-sm ${u.is_active?'btn-outline':'btn-success'}"
+        title="${u.is_active?'إيقاف الحساب':'تفعيل الحساب'}">
+        <svg style="width:13px;height:13px;fill:currentColor" viewBox="0 0 24 24">
+          ${u.is_active
+            ? '<path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/>'
+            : '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'}
+        </svg>
+      </button>
+    </div>`;
+}
+
+async function toggleUser(uid) {
+  const res  = await fetch('/admin/users/' + uid + '/toggle', { method:'POST' });
+  const data = await res.json();
+  showToast(data.success ? 'تم التحديث' : 'حدث خطأ', data.success ? 'success' : 'error');
+  if (data.success) loadUsers();
+}
+
+function openCreateUser() {
+  document.getElementById('nu-msg').style.display = 'none';
+  document.getElementById('nu-name').value  = '';
+  document.getElementById('nu-email').value = '';
+  document.getElementById('create-user-modal').classList.add('open');
+}
+function closeCreateUser() {
+  document.getElementById('create-user-modal').classList.remove('open');
+}
+document.getElementById('create-user-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeCreateUser();
+});
+
+async function submitCreateUser() {
+  const btn = document.getElementById('create-user-btn');
+  const msg = document.getElementById('nu-msg');
+  btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
+  const res  = await fetch('/admin/users/create', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      full_name: document.getElementById('nu-name').value.trim(),
+      email:     document.getElementById('nu-email').value.trim(),
+      role:      document.getElementById('nu-role').value,
+      college:   document.getElementById('nu-college').value || null
+    })
+  });
+  const data = await res.json();
+  msg.style.display = 'block';
+  msg.style.color   = data.success ? 'var(--success)' : 'var(--danger)';
+  msg.style.background = data.success ? '#f0fff4' : '#fff5f5';
+  msg.style.padding = '8px 11px'; msg.style.borderRadius = '7px';
+  msg.textContent = data.message;
+  btn.disabled = false; btn.textContent = 'إنشاء وإرسال بريد التفعيل';
+  if (data.success) { loadUsers(); setTimeout(closeCreateUser, 2500); }
+}
+
+// Audit
+let auditPage = 1;
+async function loadAudit(page = 1) {
+  auditPage = page;
+  const res  = await fetch('/admin/audit?page=' + page);
+  const data = await res.json();
+  document.getElementById('audit-tbody').innerHTML = data.logs.length
+    ? data.logs.map(l => `<tr>
+        <td><span class="audit-action">${l.action}</span></td>
+        <td style="font-size:.8rem">${l.full_name||'–'}</td>
+        <td style="font-size:.72rem;color:var(--muted);direction:ltr">${l.email||'–'}</td>
+        <td style="font-size:.78rem;direction:ltr">${l.target||'–'}</td>
+        <td style="font-size:.72rem;color:var(--muted);direction:ltr">${fmt(l.created_at)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">لا توجد عمليات بعد</td></tr>';
+  buildPager(data.page, data.pages, 'audit-pager', loadAudit);
+}
+
+// Boot
+loadStudents(1);
+</script>
+{% endblock %}

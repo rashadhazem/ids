@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1"><title>تعيين كلمة مرور جديدة</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+    *{
+        box-sizing:border-box;
+        margin:0;
+        padding:0
+    }
+    body{
+        font-family:'Cairo',sans-serif;
+        background:linear-gradient(135deg,#0d1f3c,#1a3a6b 50%,#0d1f3c);
+        min-height:100vh;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:20px
+    }
+    .card{
+        background:#fff;
+        border-radius:18px;
+        width:100%;
+        max-width:400px;
+        overflow:hidden;
+        box-shadow:0 16px 50px rgba(0,0,0,.3)
+    }
+    .top{
+        background:linear-gradient(135deg,#0d1f3c,#c53030);
+        padding:28px;
+        text-align:center
+    }
+    .top h1{
+        color:#fff;
+        font-size:1.1rem;
+        font-weight:900
+    }
+    .top p{
+        color:rgba(255,255,255,.5);
+        font-size:.78rem;
+        margin-top:4px
+    }
+    form{
+        padding:24px
+    }
+    .field{
+        margin-bottom:14px
+    }
+    label{
+        font-size:.82rem;
+        font-weight:600;
+        color:#1a2744;
+        display:block;
+        margin-bottom:5px
+    }
+    input{
+        width:100%;
+        padding:10px 13px;
+        border:1.5px solid #dce3ef;
+        border-radius:9px;
+        font-family:'Cairo';
+        font-size:.875rem;
+        outline:none
+    }
+    input:focus{
+        border-color:#1a3a6b
+    }
+    .error{
+        background:#fff5f5;
+        border:1px solid #feb2b2;
+        color:#c53030;
+        border-radius:8px;
+        padding:10px;
+        font-size:.82rem;
+        margin-bottom:14px
+    }
+    .btn{
+        width:100%;
+        padding:12px;
+        background:linear-gradient(135deg,#c53030,#991b1b);
+        color:#fff;
+        border:none;
+        border-radius:9px;
+        font-size:.9rem;
+        font-weight:700;
+        font-family:'Cairo';
+        cursor:pointer
+    }
+</style>
+</head>
+<body>
+    <div class="card">
+        <div class="top">
+            <h1>كلمة مرور جديدة</h1>
+            <p>اختر كلمة مرور قوية</p></div>
+<form method="POST">{% if error %}
+    <div class="error">{{ error }}</div>{% endif %}
+<div class="field">
+    <label>كلمة المرور الجديدة</label>
+    <input type="password" name="password" required placeholder="8 أحرف على الأقل">
+</div>
+<div class="field">
+    <label>تأكيد كلمة المرور</label>
+    <input type="password" name="password2" required placeholder="أعد الكتابة">
+</div>
+<button type="submit" class="btn">تغيير كلمة المرور</button>
+</form>
+</div>
+</body>
+</html>
