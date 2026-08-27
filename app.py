@@ -1448,7 +1448,11 @@ def onedrive_callback():
         
     code = request.args.get("code")
     if not code:
-        return "Error: Authorization code is missing from query string.", 400
+        err = request.args.get("error")
+        err_desc = request.args.get("error_description")
+        if err or err_desc:
+            return f"Microsoft OAuth Error: {err}<br>Description: {err_desc}", 400
+        return f"Error: Authorization code is missing from query string. Received query parameters: {dict(request.args)}", 400
         
     client_id = os.getenv("ONEDRIVE_CLIENT_ID")
     client_secret = os.getenv("ONEDRIVE_CLIENT_SECRET")
