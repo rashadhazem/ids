@@ -199,6 +199,7 @@ footer a{
     <p>نظام القيد والتسجيل الجامعي</p>
   </div>
   <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if error %}
     <div class="error-box" style="margin:0 0 14px">
       <svg viewBox="0 0 24 24">

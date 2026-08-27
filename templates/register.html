@@ -435,7 +435,14 @@ document.getElementById('reg-form').addEventListener('submit', async function(e)
     const codeField = document.getElementById('code');
     if (codeField) codeField.value = toEng(codeField.value);
     const fd  = new FormData(this);
-    const res = await fetch('/register', { method: 'POST', body: fd });
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const res = await fetch('/register', {
+      method: 'POST',
+      body: fd,
+      headers: {
+        'X-CSRFToken': csrfToken
+      }
+    });
     const data = await res.json();
 
     if (data.success) {
@@ -494,7 +501,14 @@ async function updateExistingPhoto() {
   fd.append('auto_crop', document.getElementById('h-autocrop').value);
 
   try {
-    const res  = await fetch(`/student/${_dupStudentId}/update-photo`, { method: 'POST', body: fd });
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const res  = await fetch(`/student/${_dupStudentId}/update-photo`, {
+      method: 'POST',
+      body: fd,
+      headers: {
+        'X-CSRFToken': csrfToken
+      }
+    });
     const data = await res.json();
     closeDupModal();
     if (data.success) {

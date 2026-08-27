@@ -95,7 +95,8 @@
         <div class="top">
             <h1>كلمة مرور جديدة</h1>
             <p>اختر كلمة مرور قوية</p></div>
-<form method="POST">{% if error %}
+<form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if error %}
     <div class="error">{{ error }}</div>{% endif %}
 <div class="field">
     <label>كلمة المرور الجديدة</label>

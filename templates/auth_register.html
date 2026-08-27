@@ -72,6 +72,7 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
     <p>يجب استخدام إيمبيل الجامعة @{{ domain }}</p>
   </div>
   <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if error %}
     <div class="alert alert-error">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
@@ -81,7 +82,7 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
     {% if success %}
     <div class="alert alert-success">
       <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-      {{ success | safe }}
+      {{ success }} <a href="{{ url_for('student_login') }}" style="color:#1a3a6b;text-decoration:underline">سجّل الدخول من هنا</a>
     </div>
     {% endif %}
     <div class="field">

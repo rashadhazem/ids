@@ -11,29 +11,50 @@ from flask_limiter.util import get_remote_address
 from flask_mail import Mail, Message
 from flask_jwt_extended import (JWTManager, create_access_token,
                                  jwt_required, get_jwt_identity)
+from flask_wtf.csrf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from werkzeug.utils import secure_filename
 import tempfile
 
+# ── bootstrap ──────────────────────────────────────────────────────────────
+load_dotenv()
+
 from database import get_db, init_db, COLLEGES, ROLES, log_action, ph, USE_PG
 from image_processor import (detect_faces, apply_edits, face_detected, save_image,
                               archive_old_image, TARGET_W, TARGET_H)
 
-# ── bootstrap ──────────────────────────────────────────────────────────────
-load_dotenv()
-
 app = Flask(__name__)
-app.secret_key                         = os.getenv("SECRET_KEY", "dev-secret")
-app.config["JWT_SECRET_KEY"]           = os.getenv("JWT_SECRET_KEY", "dev-jwt")
+# Enable ProxyFix behind a reverse proxy (e.g. Nginx)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+# Initialize CSRF Protection
+csrf = CSRFProtect(app)
+
+# Load configuration securely
+secret_key_env = os.getenv("SECRET_KEY")
+if not secret_key_env:
+    app.logger.warning("[SECURITY WARNING] SECRET_KEY not set. Using temporary random key.")
+    secret_key_env = secrets.token_hex(32)
+app.secret_key = secret_key_env
+
+jwt_secret_env = os.getenv("JWT_SECRET_KEY")
+if not jwt_secret_env:
+    app.logger.warning("[SECURITY WARNING] JWT_SECRET_KEY not set. Using temporary random key.")
+    jwt_secret_env = secrets.token_hex(32)
+app.config["JWT_SECRET_KEY"]           = jwt_secret_env
+
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=8)
 app.config["MAX_CONTENT_LENGTH"]       = int(os.getenv("MAX_CONTENT_LENGTH", 5*1024*1024))
 app.config["MAIL_SERVER"]              = os.getenv("MAIL_SERVER",  "smtp.gmail.com")
 app.config["MAIL_PORT"]                = int(os.getenv("MAIL_PORT", 587))
 app.config["MAIL_USE_TLS"]             = os.getenv("MAIL_USE_TLS","true").lower()=="true"
-app.config["MAIL_USERNAME"] = "orabyabdo21@gmail.com"
-app.config["MAIL_PASSWORD"] = "pwlc uwbq wuqj jwsj"
-app.config["MAIL_DEFAULT_SENDER"] = "orabyabdo21@gmail.com"
+
+# SMTP Credentials from Environment Variables (V-001)
+app.config["MAIL_USERNAME"]            = os.getenv("MAIL_USERNAME")
+app.config["MAIL_PASSWORD"]            = os.getenv("MAIL_PASSWORD")
+app.config["MAIL_DEFAULT_SENDER"]      = os.getenv("MAIL_DEFAULT_SENDER")
 
 UPLOAD_FOLDER        = os.path.join(app.root_path, "static", "uploads")
 STATIC_ROOT          = os.path.join(app.root_path, "static")
@@ -42,6 +63,23 @@ CURRENT_YEAR         = datetime.now().year
 YEAR_RANGE           = list(range(CURRENT_YEAR, CURRENT_YEAR - 10, -1))
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"  # Clickjacking mitigation (V-008)
+    response.headers["X-Content-Type-Options"] = "nosniff"  # MIME sniffing prevention (V-024)
+    # Content Security Policy (V-022)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data: https://res.cloudinary.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "frame-ancestors 'none';"
+    )
+    # Strict Transport Security (HSTS) (V-023)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 mail    = Mail(app)
 jwt     = JWTManager(app)
@@ -68,6 +106,8 @@ def validate_full_name(name: str) -> tuple[bool, str]:
 
 def validate_student_id(year: str, code: str) -> tuple[bool, str]:
     if not re.fullmatch(r"\d{4}", year):   return False, "السنة يجب أن تكون 4 أرقام"
+    if not (CURRENT_YEAR - 10 <= int(year) <= CURRENT_YEAR):
+        return False, f"سنة القيد غير صالحة. يجب أن تكون بين {CURRENT_YEAR - 10} و {CURRENT_YEAR}"
     if not re.fullmatch(r"\d{6}|\d{8}", code): return False, "الكود يجب أن يكون 6 أو 8 أرقام"
     return True, ""
 
@@ -182,7 +222,7 @@ def _email_registered_html(name, student_id, card_link):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.route("/auth/login", methods=["GET","POST"])
-@limiter.limit("20 per hour")
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_LOGIN", "30 per hour"))
 def auth_login():
     if session.get("user_id"):
         return redirect(url_for("dashboard"))
@@ -202,6 +242,7 @@ def auth_login():
         elif not check_pw(pw, u["password_hash"]):
             error = "كلمة المرور غير صحيحة"
         else:
+            session.clear()
             session["user_id"]    = u["id"]
             session["user_name"]  = u["full_name"]
             session["role"]       = u["role"]
@@ -226,7 +267,7 @@ def auth_login():
 
 
 @app.route("/student/login", methods=["GET","POST"])
-@limiter.limit("20 per hour")
+@limiter.limit(lambda: os.getenv("LIMIT_STUDENT_LOGIN", "30 per hour"))
 def student_login():
     """Dedicated login page for students."""
     if session.get("user_id"):
@@ -249,6 +290,7 @@ def student_login():
         elif not check_pw(pw, u["password_hash"]):
             error = "كلمة المرور غير صحيحة"
         else:
+            session.clear()
             session["user_id"]    = u["id"]
             session["user_name"]  = u["full_name"]
             session["role"]       = u["role"]
@@ -271,7 +313,7 @@ def student_login():
 
 
 @app.route("/auth/register", methods=["GET","POST"])
-@limiter.limit("10 per hour")
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_REGISTER", "30 per hour"))
 def auth_register():
     """Public self-registration — always assigns 'student' role.
     Admins/staff accounts are created by superadmin only."""
@@ -311,7 +353,7 @@ def auth_register():
                 link = url_for("auth_verify", token=token, _external=True)
                 send_email(email, "تفعيل حساب نظام التسجيل", _email_verify_html(full_name, link))
                 return render_template("auth_register.html",
-                    success="تم إنشاء حسابك! تحقق من بريدك لتفعيل الحساب. <a href='" + url_for('student_login') + "' style='color:#1a3a6b;text-decoration:underline'>سجّل الدخول من هنا</a>",
+                    success="تم إنشاء حسابك! تحقق من بريدك لتفعيل الحساب.",
                     domain=UNIVERSITY_DOMAIN)
     return render_template("auth_register.html", error=error, domain=UNIVERSITY_DOMAIN)
 
@@ -336,7 +378,7 @@ def auth_verify(token):
 
 
 @app.route("/auth/forgot", methods=["GET","POST"])
-@limiter.limit("5 per hour")
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_FORGOT", "10 per hour"))
 def auth_forgot():
     msg = None
     if request.method == "POST":
@@ -478,7 +520,7 @@ def register_form():
 
 @app.route("/register", methods=["POST"])
 @login_required
-@limiter.limit("60 per hour")
+@limiter.limit(lambda: os.getenv("LIMIT_STAFF_REGISTER", "300 per hour"))
 def register():
     try:
         full_name   = request.form.get("full_name","").strip()
@@ -544,9 +586,13 @@ def register():
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
 
         # Apply edits + auto-crop
-        processed = apply_edits(raw_bytes, rotation=rotation, flip_h=flip_h,
-                                zoom=zoom, offset_x=offset_x, offset_y=offset_y,
-                                auto_crop=auto_crop)
+        try:
+            processed = apply_edits(raw_bytes, rotation=rotation, flip_h=flip_h,
+                                    zoom=zoom, offset_x=offset_x, offset_y=offset_y,
+                                    auto_crop=auto_crop)
+        except Exception as e:
+            app.logger.warning(f"Failed to process image: {e}")
+            return jsonify(success=False, message="الملف المرفوع ليس صورة صالحة أو أنه تالف."), 400
 
         # Face check (after processing)
         faces = detect_faces(processed)
@@ -613,13 +659,37 @@ def student_card(student_id):
 
 
 @app.route("/student/<student_id>/update-photo", methods=["POST"])
-@limiter.limit("10 per hour")
+@limiter.limit(lambda: os.getenv("LIMIT_UPDATE_PHOTO", "30 per hour"))
 def update_photo(student_id):
     student_id = to_eng(student_id.strip())
+    
+    # ── Authentication and Authorization checks (V-006, V-007) ──
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify(success=False, message="غير مصرح بالدخول. يرجى تسجيل الدخول أولاً"), 401
+        
     db  = get_db(); cur = db.cursor()
     cur.execute(f"SELECT * FROM students WHERE student_id={ph()}", (student_id,))
     row = _row_to_dict(cur.fetchone())
-    if not row: db.close(); return jsonify(success=False, message="غير موجود"), 404
+    if not row:
+        db.close()
+        return jsonify(success=False, message="غير موجود"), 404
+
+    role = session.get("role")
+    my_sid = session.get("student_id")
+    my_college = session.get("college")
+    
+    if role == "student":
+        if not my_sid or my_sid != student_id:
+            db.close()
+            return jsonify(success=False, message="غير مصرح لك بتحديث هذه الصورة"), 403
+    elif role == "admin":
+        if my_college and row["college"] != my_college:
+            db.close()
+            return jsonify(success=False, message="غير مصرح لك بتعديل بيانات طالب خارج كليتك"), 403
+    elif role not in ("superadmin", "staff"):
+        db.close()
+        return jsonify(success=False, message="غير مصرح بالدخول"), 403
 
     image_file = request.files.get("image")
     if not image_file or not image_file.filename.lower().endswith((".jpg",".jpeg")):
@@ -648,7 +718,7 @@ def update_photo(student_id):
         old_rel = row.get("image_path","")
         archived_path = archive_old_image(old_rel, student_id, STATIC_ROOT, UPLOAD_FOLDER)
         if archived_path:
-            print(f"Archived old image to: {archived_path}")
+            app.logger.info(f"Archived old image to: {archived_path}")
 
         # Save new
         result = save_image(processed, student_id, row["year"], row["college"], UPLOAD_FOLDER)
@@ -668,7 +738,7 @@ def update_photo(student_id):
     except Exception as e:
         db.close()
         app.logger.error(f"Error updating photo for {student_id}: {e}")
-        return jsonify(success=False, message="حدث خطأ داخلي"), 500
+        return jsonify(success=False, message="حدث خطأ أثناء معالجة الصورة. تأكد من أن الملف المرفوع صورة صالحة وغير تالفة."), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -881,7 +951,8 @@ def admin_audit():
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.route("/api/login", methods=["POST"])
-@limiter.limit("20 per hour")
+@csrf.exempt
+@limiter.limit(lambda: os.getenv("LIMIT_API_LOGIN", "60 per hour"))
 def api_login():
     data  = request.get_json() or {}
     email = data.get("email","").strip().lower()
@@ -1236,7 +1307,7 @@ def student_self_register():
 
 @app.route("/student/register", methods=["POST"])
 @login_required
-@limiter.limit("5 per hour")
+@limiter.limit(lambda: os.getenv("LIMIT_STUDENT_REGISTER", "30 per hour"))
 def student_self_register_post():
     """Handle student self-registration form submission."""
     if session.get("role") != "student":
@@ -1293,9 +1364,13 @@ def student_self_register_post():
         if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
 
-        processed = apply_edits(raw, rotation=rotation, flip_h=flip_h,
-                                zoom=zoom, offset_x=offset_x, offset_y=offset_y,
-                                auto_crop=auto_crop)
+        try:
+            processed = apply_edits(raw, rotation=rotation, flip_h=flip_h,
+                                    zoom=zoom, offset_x=offset_x, offset_y=offset_y,
+                                    auto_crop=auto_crop)
+        except Exception as e:
+            app.logger.warning(f"Failed to process student self-registration image: {e}")
+            return jsonify(success=False, message="الملف المرفوع ليس صورة صالحة أو أنه تالف."), 400
         if not face_detected(processed):
             return jsonify(success=False,
                 message="لم يتم اكتشاف وجه. يرجى رفع صورة شخصية واضحة"), 400
@@ -1337,6 +1412,89 @@ def student_self_register_post():
         return jsonify(success=False, message="حدث خطأ داخلي"), 500
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# ONEDRIVE OAUTH GATEWAY
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/onedrive/auth")
+@login_required
+def onedrive_auth():
+    if session.get("role") != "superadmin":
+        abort(403)
+    
+    client_id = os.getenv("ONEDRIVE_CLIENT_ID")
+    if not client_id:
+        return "Error: ONEDRIVE_CLIENT_ID is not configured in .env", 400
+        
+    redirect_uri = f"{request.scheme}://{request.host}/admin/onedrive/callback"
+    tenant_id = os.getenv("ONEDRIVE_TENANT_ID", "common")
+    
+    auth_url = (
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
+        f"?client_id={client_id}"
+        f"&response_type=code"
+        f"&redirect_uri={redirect_uri}"
+        f"&response_mode=query"
+        f"&scope=Files.ReadWrite.All%20offline_access"
+    )
+    return redirect(auth_url)
+
+
+@app.route("/admin/onedrive/callback")
+@login_required
+def onedrive_callback():
+    if session.get("role") != "superadmin":
+        abort(403)
+        
+    code = request.args.get("code")
+    if not code:
+        return "Error: Authorization code is missing from query string.", 400
+        
+    client_id = os.getenv("ONEDRIVE_CLIENT_ID")
+    client_secret = os.getenv("ONEDRIVE_CLIENT_SECRET")
+    tenant_id = os.getenv("ONEDRIVE_TENANT_ID", "common")
+    
+    if not client_id or not client_secret:
+        return "Error: Client ID or Client Secret is not configured in .env", 400
+        
+    redirect_uri = f"{request.scheme}://{request.host}/admin/onedrive/callback"
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    
+    data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+        "scope": "Files.ReadWrite.All offline_access"
+    }
+    
+    try:
+        import requests
+        res = requests.post(token_url, data=data, timeout=15)
+        if res.status_code == 200:
+            tokens = res.json()
+            refresh_token = tokens.get("refresh_token")
+            
+            html = f"""
+            <div dir="rtl" style="font-family:Cairo,Arial,sans-serif;max-width:600px;margin:50px auto;padding:30px;border:1px solid #dce3ef;border-radius:14px;background:#f0f4f9;box-shadow:0 8px 30px rgba(0,0,0,0.05)">
+              <h1 style="color:#2b6cb0;margin-top:0">🎉 تم الاتصال بـ Microsoft OneDrive بنجاح!</h1>
+              <p style="color:#4a5568;line-height:1.6">تم الحصول على رمز التحديث (Refresh Token) بنجاح. يرجى نسخه ووضعه في ملف <strong>.env</strong> الخاص بالتطبيق:</p>
+              
+              <div style="background:#2d3748;color:#fff;padding:16px;border-radius:8px;font-family:monospace;font-size:0.9rem;word-break:break-all;margin:20px 0;user-select:all" title="انقر لتحديد الكل">
+                ONEDRIVE_REFRESH_TOKEN={refresh_token}
+              </div>
+              
+              <p style="color:#e53e3e;font-size:0.85rem;font-weight:bold">* تنبيه: هذا الرمز سري للغاية ويسمح بالوصول لملفاتك، لا تشاركه مع أي شخص.</p>
+              <p style="color:#718096;font-size:0.8rem">بعد تعديل ملف .env، أعد تشغيل السيرفر لتفعيل مزامنة الصور تلقائياً.</p>
+              <a href="/" style="display:inline-block;margin-top:20px;padding:10px 20px;background:#3182ce;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">الذهاب للوحة التحكم</a>
+            </div>
+            """
+            return html
+        else:
+            return f"Error exchanging code: {res.status_code} - {res.text}", 400
+    except Exception as e:
+        return f"Connection error: {e}", 500
 
 
 @app.errorhandler(403)

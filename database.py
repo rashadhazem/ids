@@ -5,6 +5,9 @@ database.py  –  Dual-backend DB layer
 """
 import os, sqlite3
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 try:
     import psycopg2
@@ -128,6 +131,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name     TEXT    NOT NULL,
     role          TEXT    NOT NULL DEFAULT 'staff',
     college       TEXT,
+    student_id    TEXT    UNIQUE,
     is_active     BOOLEAN NOT NULL DEFAULT TRUE,
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     verify_token  TEXT,
@@ -162,6 +166,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_student_id ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_year       ON students(year);
 CREATE INDEX IF NOT EXISTS idx_college    ON students(college);
+CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id);
+CREATE INDEX IF NOT EXISTS idx_audit_user   ON audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_log(created_at);
 """
 
 
@@ -171,7 +178,14 @@ def init_db():
     cur  = conn.cursor()
 
     # ── Migration FIRST: add missing columns to existing tables ──
-    if not USE_PG:
+    if USE_PG:
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT UNIQUE")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id)")
+        except Exception:
+            pass
+        conn.commit()
+    else:
         migrations = [
             "ALTER TABLE users ADD COLUMN student_id TEXT",
         ]
@@ -194,7 +208,10 @@ def init_db():
 
     # seed super admin
     email    = os.getenv("SUPER_ADMIN_EMAIL",    "admin@university.edu.eg")
-    password = os.getenv("SUPER_ADMIN_PASSWORD",  "Admin@2026!")
+    password = os.getenv("SUPER_ADMIN_PASSWORD")
+    if not password:
+        password = "Admin@2026!"
+        print("[WARNING] SUPER_ADMIN_PASSWORD is not set in environment. Falling back to default password.")
     name     = "مدير النظام"
 
     p = ph()
@@ -217,7 +234,7 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print(f"✅ DB initialised ({'PostgreSQL' if USE_PG else 'SQLite'})")
+    print(f"DB initialised ({'PostgreSQL' if USE_PG else 'SQLite'})")
 
 
 # ── audit helper ───────────────────────────────────────────────────────────

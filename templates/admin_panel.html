@@ -374,7 +374,21 @@
 {% block scripts %}
 <script>
 let pendingDelId = null, curPage = 1;
-const ROLE = "{{ role }}";
+const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+const ROLE = {{ role | tojson }};
+
+function escapeHTML(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>'"]/g, 
+    tag => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[tag] || tag)
+  );
+}
 
 function switchTab(name, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -418,14 +432,14 @@ async function loadStudents(page = 1) {
       ? s.image_path : '/static/' + (s.image_path || '');
     return `<tr>
       <td><img src="${imgUrl}" class="student-thumb" onerror="this.style.opacity=0" alt=""></td>
-      <td><span class="student-id-badge">${s.student_id}</span></td>
-      <td style="font-weight:600">${s.full_name}</td>
-      <td><span class="year-tag">${s.year}</span></td>
-      <td><span class="college-tag">${s.college}</span></td>
+      <td><span class="student-id-badge">${escapeHTML(s.student_id)}</span></td>
+      <td style="font-weight:600">${escapeHTML(s.full_name)}</td>
+      <td><span class="year-tag">${escapeHTML(s.year)}</span></td>
+      <td><span class="college-tag">${escapeHTML(s.college)}</span></td>
       <td style="color:var(--muted);font-size:.74rem;direction:ltr">${fmt(s.created_at)}</td>
       <td>
         <div style="display:flex;gap:5px;flex-wrap:wrap">
-          <a href="/student/${s.student_id}" target="_blank" class="btn btn-outline btn-sm" title="عرض البطاقة">
+          <a href="/student/${escapeHTML(s.student_id)}" target="_blank" class="btn btn-outline btn-sm" title="عرض البطاقة">
             <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
               <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
             </svg>
@@ -483,7 +497,12 @@ function closeDel() {
 document.getElementById('confirm-del-btn').addEventListener('click', async () => {
   if (!pendingDelId) return;
   const id = pendingDelId; closeDel();
-  const res  = await fetch('/admin/delete/' + id, { method: 'DELETE' });
+  const res  = await fetch('/admin/delete/' + id, {
+    method: 'DELETE',
+    headers: {
+      'X-CSRFToken': csrfToken
+    }
+  });
   const data = await res.json();
   showToast(data.message, data.success ? 'success' : 'error');
   if (data.success) loadStudents(curPage);
@@ -521,7 +540,7 @@ async function loadUsers() {
             <svg style="width:16px;height:16px;fill:var(--gold2)" viewBox="0 0 24 24">
               <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/>
             </svg>
-            <span style="color:#fff;font-size:.875rem;font-weight:700">${college}</span>
+            <span style="color:#fff;font-size:.875rem;font-weight:700">${escapeHTML(college)}</span>
           </div>
           <span style="font-size:.72rem;background:rgba(232,184,75,.2);color:var(--gold2);
             padding:2px 9px;border-radius:20px">${members.length} مستخدم</span>
@@ -540,10 +559,10 @@ function userCard(u, rl) {
                   : 'badge-green';
   return `
     <div class="user-card" style="margin-bottom:8px">
-      <div class="user-av">${(u.full_name||'?')[0]}</div>
+      <div class="user-av">${escapeHTML((u.full_name||'?')[0])}</div>
       <div class="user-info">
-        <strong>${u.full_name}</strong>
-        <span style="display:block">${u.email}</span>
+        <strong>${escapeHTML(u.full_name)}</strong>
+        <span style="display:block">${escapeHTML(u.email)}</span>
         <span style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">
           <span class="badge ${roleBadge}">${rl[u.role]||u.role}</span>
           ${!u.email_verified ? '<span class="badge badge-red">غير مفعّل</span>' : ''}
@@ -562,7 +581,12 @@ function userCard(u, rl) {
 }
 
 async function toggleUser(uid) {
-  const res  = await fetch('/admin/users/' + uid + '/toggle', { method:'POST' });
+  const res  = await fetch('/admin/users/' + uid + '/toggle', {
+    method:'POST',
+    headers: {
+      'X-CSRFToken': csrfToken
+    }
+  });
   const data = await res.json();
   showToast(data.success ? 'تم التحديث' : 'حدث خطأ', data.success ? 'success' : 'error');
   if (data.success) loadUsers();
@@ -586,7 +610,11 @@ async function submitCreateUser() {
   const msg = document.getElementById('nu-msg');
   btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
   const res  = await fetch('/admin/users/create', {
-    method:'POST', headers:{'Content-Type':'application/json'},
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'X-CSRFToken': csrfToken
+    },
     body: JSON.stringify({
       full_name: document.getElementById('nu-name').value.trim(),
       email:     document.getElementById('nu-email').value.trim(),
@@ -612,10 +640,10 @@ async function loadAudit(page = 1) {
   const data = await res.json();
   document.getElementById('audit-tbody').innerHTML = data.logs.length
     ? data.logs.map(l => `<tr>
-        <td><span class="audit-action">${l.action}</span></td>
-        <td style="font-size:.8rem">${l.full_name||'–'}</td>
-        <td style="font-size:.72rem;color:var(--muted);direction:ltr">${l.email||'–'}</td>
-        <td style="font-size:.78rem;direction:ltr">${l.target||'–'}</td>
+        <td><span class="audit-action">${escapeHTML(l.action)}</span></td>
+        <td style="font-size:.8rem">${l.full_name ? escapeHTML(l.full_name) : '–'}</td>
+        <td style="font-size:.72rem;color:var(--muted);direction:ltr">${l.email ? escapeHTML(l.email) : '–'}</td>
+        <td style="font-size:.78rem;direction:ltr">${l.target ? escapeHTML(l.target) : '–'}</td>
         <td style="font-size:.72rem;color:var(--muted);direction:ltr">${fmt(l.created_at)}</td>
       </tr>`).join('')
     : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">لا توجد عمليات بعد</td></tr>';

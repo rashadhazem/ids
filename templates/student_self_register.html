@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>تسجيل بياناتك – نظام القيد</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -489,7 +490,14 @@ async function updateDupPhoto(){
   ['rotation:h-rot','flip_h:h-flip','zoom:h-zoom','offset_x:h-ox','offset_y:h-oy','auto_crop:h-ac'].forEach(p=>{
     const[n,id]=p.split(':');fd.append(n,document.getElementById(id).value);});
   try{
-    const res=await fetch(`/student/${_dupSid}/update-photo`,{method:'POST',body:fd});
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const res=await fetch(`/student/${_dupSid}/update-photo`,{
+      method:'POST',
+      body:fd,
+      headers: {
+        'X-CSRFToken': csrfToken
+      }
+    });
     const data=await res.json();
     closeDup();
     if(data.success){toast('✅ تم تحديث صورتك بنجاح','success');setTimeout(()=>location.href=`/student/${_dupSid}`,1500);}
@@ -506,7 +514,14 @@ document.getElementById('reg-form').addEventListener('submit',async function(e){
   document.getElementById('code').value=toE(document.getElementById('code').value);
   try{
     const fd=new FormData(this);
-    const res=await fetch('/student/register',{method:'POST',body:fd});
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const res=await fetch('/student/register',{
+      method:'POST',
+      body:fd,
+      headers: {
+        'X-CSRFToken': csrfToken
+      }
+    });
     const data=await res.json();
     if(data.success){
       toast(data.message,'success');

@@ -260,7 +260,14 @@ document.getElementById('import-btn').addEventListener('click', async () => {
   try {
     const fd = new FormData();
     fd.append('file', selectedFile);
-    const res  = await fetch('/admin/bulk-import', { method: 'POST', body: fd });
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const res  = await fetch('/admin/bulk-import', {
+      method: 'POST',
+      body: fd,
+      headers: {
+        'X-CSRFToken': csrfToken
+      }
+    });
     const data = await res.json();
 
     clearInterval(timer);

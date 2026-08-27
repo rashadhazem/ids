@@ -108,6 +108,7 @@
                     <p>سيُرسل رابط إعادة التعيين لبريدك</p>
                     </div>
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {% if msg %}
                             <div class="alert">{{ msg }}</div>
                         {% endif %}

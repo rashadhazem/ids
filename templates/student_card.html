@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>{{ student.full_name }} – بطاقة الطالب</title>
 <meta property="og:title" content="{{ student.full_name }}">
 <meta property="og:description" content="طالب في {{ student.college }} – {{ student.year }}">
-<meta property="og:image" content="/static/{{ student.image_path }}">
+<meta property="og:image" content="{% if student.image_path.startswith('http') %}{{ student.image_path }}{% else %}/static/{{ student.image_path }}{% endif %}">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -381,7 +382,7 @@
   <div class="card-body">
     <div class="photo-wrap">
       <div class="photo-ring" id="photo-ring" onclick="document.getElementById('quick-upload').click()">
-        <img src="/static/{{ student.image_path }}" alt="{{ student.full_name }}" id="card-photo">
+        <img src="{% if student.image_path.startswith('http') %}{{ student.image_path }}{% else %}/static/{{ student.image_path }}{% endif %}" alt="{{ student.full_name }}" id="card-photo">
         <div class="photo-overlay">
           <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M18.2 4H16.4L14.8 2H9.2L7.6 4H5.8C4.8 4 4 4.8 4 5.8v12.4C4 19.2 4.8 20 5.8 20h12.4c1 0 1.8-.8 1.8-1.8V5.8C20 4.8 19.2 4 18.2 4z"/></svg>
         </div>
@@ -516,7 +517,7 @@
 </footer>
 
 <script>
-const STUDENT_ID = "{{ student.student_id }}";
+const STUDENT_ID = {{ student.student_id | tojson }};
 
 // ── Barcode decoration ──
 const bc = document.getElementById('barcode');
@@ -715,7 +716,14 @@ document.getElementById('update-btn').addEventListener('click', async function()
     const blob = await exportBlob();
     const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
     const fd   = new FormData(); fd.append('image', file);
-    const res  = await fetch(`/student/${STUDENT_ID}/update-photo`, { method: 'POST', body: fd });
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const res  = await fetch(`/student/${STUDENT_ID}/update-photo`, {
+      method: 'POST',
+      body: fd,
+      headers: {
+        'X-CSRFToken': csrfToken
+      }
+    });
     const data = await res.json();
 
     if(data.success) {

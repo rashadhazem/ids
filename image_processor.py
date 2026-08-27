@@ -4,13 +4,13 @@ import re
 import shutil
 from datetime import datetime
 import numpy as np
-import requests
-import base64
 import cv2
 from PIL import Image, ImageOps
+from dotenv import load_dotenv
 
-API_KEY = os.getenv("FACEPP_API_KEY", "")
-API_SECRET = os.getenv("FACEPP_API_SECRET", "")
+load_dotenv()
+
+from onedrive_helper import upload_to_onedrive, archive_in_onedrive
 
 try:
     import cloudinary
@@ -122,54 +122,11 @@ def detect_faces_opencv(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
     return faces
 
 
-def detect_face_faceplusplus(image_bytes: bytes) -> list:
-    """Detect faces using the Face++ API."""
-    encoded_image = base64.b64encode(image_bytes).decode("utf-8")
-
-    if not API_KEY or not API_SECRET:
-        print("Face++ credentials not configured; skipping Face++ detection.")
-        return []
-
-    url = "https://api-us.faceplusplus.com/facepp/v3/detect"
-    data = {
-        "api_key": API_KEY,
-        "api_secret": API_SECRET,
-        "image_base64": encoded_image,
-    }
-
-    try:
-        response = requests.post(url, data=data, timeout=20)
-        print("Face++ status:", response.status_code)
-        print("Face++ response:", response.text)
-
-        result = response.json()
-        return result.get("faces", [])
-    except Exception as e:
-        print("Face++ request error:", str(e))
-        return []
-
-
 def detect_faces(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
     """
-    Return list of (x, y, w, h) face rectangles.
-    Try Face++ API first, fallback to OpenCV if no faces found.
+    Return list of (x, y, w, h) face rectangles detected via OpenCV frontal face cascades.
     """
     normalized_bytes = _normalize_image_bytes(image_bytes)
-
-    # Try Face++ first
-    faces = detect_face_faceplusplus(normalized_bytes)
-    if faces:
-        return [
-            (
-                int(face["face_rectangle"]["left"]),
-                int(face["face_rectangle"]["top"]),
-                int(face["face_rectangle"]["width"]),
-                int(face["face_rectangle"]["height"]),
-            )
-            for face in faces
-        ]
-
-    # Fallback to OpenCV
     return detect_faces_opencv(normalized_bytes)
 
 
@@ -283,11 +240,17 @@ def save_image(
     if not face_detected(image_bytes):
         raise ValueError("الصورة لا تحتوي على وجه بشري. الصورة غير مطابقة للمعايير.")
 
+    # Mirror copy backup to Microsoft OneDrive if enabled
+    try:
+        upload_to_onedrive(image_bytes, year, college, f"{student_id}.jpg")
+    except Exception as e:
+        print(f"[OneDrive] Failed to mirror: {e}")
+
     if _CLD:
         col_slug = _college_folder(college)
         result = cloudinary.uploader.upload(
             image_bytes,
-            public_id=f"students/{year}/{col_slug}/{student_id}",
+            public_id=f"badr_university/{year}/{col_slug}/{student_id}",
             overwrite=True,
             resource_type="image",
             transformation=[
@@ -300,7 +263,7 @@ def save_image(
             ],
         )
         return {
-            "path": result["public_id"],
+            "path": result["secure_url"],
             "url": result["secure_url"],
             "cloudinary": True,
         }
@@ -324,15 +287,73 @@ def save_image(
     return {"path": rel_path, "url": f"/static/{rel_path}", "cloudinary": False}
 
 
+def extract_cloudinary_public_id(url: str) -> str | None:
+    if "/image/upload/" not in url:
+        return None
+    parts = url.split("/image/upload/")
+    if len(parts) < 2:
+        return None
+    path_part = parts[1]
+    # Remove version tag (e.g. v12345/) if present
+    path_part = re.sub(r"^v\d+/", "", path_part)
+    # Remove extension
+    public_id, _ = os.path.splitext(path_part)
+    return public_id
+
+
+def _extract_year_and_college(path: str) -> tuple[str, str] | tuple[None, None]:
+    # Handles both Cloudinary secure URLs and local relative paths
+    if path.startswith("http"):
+        public_id = extract_cloudinary_public_id(path)
+        if not public_id:
+            return None, None
+        parts = public_id.split("/")
+    else:
+        parts = path.replace("\\", "/").split("/")
+    
+    # Search for a 4-digit year in parts
+    for i, part in enumerate(parts):
+        if re.match(r"^\d{4}$", part):
+            if i + 1 < len(parts):
+                return part, parts[i+1]
+    return None, None
+
+
 def archive_old_image(
     old_rel_path: str, student_id: str, static_root: str, upload_root: str
 ) -> str | None:
     """
     Move old image to old/ subdirectory with timestamp.
-    Returns new relative path, or None if file not found.
+    Returns new relative path or public_id, or None if file not found.
     """
     if not old_rel_path:
         return None
+
+    # Mirror archive to OneDrive if configured
+    try:
+        year, college = _extract_year_and_college(old_rel_path)
+        if year and college:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            old_filename = f"{student_id}_old_{ts}.jpg"
+            archive_in_onedrive(student_id, year, college, old_filename)
+    except Exception as e:
+        print(f"[OneDrive] Failed to archive: {e}")
+
+    if old_rel_path.startswith("http"):
+        # Cloudinary archiving: rename/move the old photo on Cloudinary to old/ directory
+        public_id = extract_cloudinary_public_id(old_rel_path)
+        if not public_id:
+            return None
+        dir_name = os.path.dirname(public_id)
+        base_name = os.path.basename(public_id)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        new_public_id = f"{dir_name}/old/{base_name}_old_{ts}"
+        try:
+            cloudinary.uploader.rename(public_id, new_public_id)
+            return new_public_id
+        except Exception as e:
+            print(f"Error archiving Cloudinary image: {e}")
+            return None
     old_full_path = os.path.join(static_root, old_rel_path)
     if not os.path.exists(old_full_path):
         return None

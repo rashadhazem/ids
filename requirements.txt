@@ -12,3 +12,5 @@ cloudinary==1.40.0
 psycopg2-binary==2.9.9
 gunicorn==21.2.0
 requests==2.31.0
+Flask-WTF==1.2.1
+
