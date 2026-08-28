@@ -23,7 +23,7 @@ load_dotenv()
 
 from database import get_db, init_db, COLLEGES, ROLES, log_action, ph, USE_PG
 from image_processor import (detect_faces, apply_edits, face_detected, save_image,
-                              archive_old_image, TARGET_W, TARGET_H)
+                              archive_old_image, TARGET_W, TARGET_H, validate_single_person)
 
 app = Flask(__name__)
 # Enable ProxyFix behind a reverse proxy (e.g. Nginx)
@@ -440,6 +440,51 @@ def auth_logout():
     return redirect(url_for("auth_login"))
 
 
+@app.route("/auth/change-password", methods=["POST"])
+@login_required
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_CHANGE_PW", "15 per hour"))
+def auth_change_password():
+    """Allow any authenticated user (superadmin, admin, staff, student) to change their password."""
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify(success=False, message="غير مصرح. يرجى تسجيل الدخول أولاً"), 401
+
+    data = request.get_json() if request.is_json else request.form
+    cur_pw  = (data.get("current_password") or "").strip()
+    new_pw  = (data.get("new_password") or "").strip()
+    new_pw2 = (data.get("confirm_password") or "").strip()
+
+    if not cur_pw:
+        return jsonify(success=False, message="يرجى إدخال كلمة المرور الحالية"), 400
+    if not new_pw:
+        return jsonify(success=False, message="يرجى إدخال كلمة المرور الجديدة"), 400
+    if len(new_pw) < 8:
+        return jsonify(success=False, message="كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل"), 400
+    if new_pw != new_pw2:
+        return jsonify(success=False, message="كلمتا المرور الجديدتان غير متطابقتين"), 400
+    if cur_pw == new_pw:
+        return jsonify(success=False, message="كلمة المرور الجديدة يجب أن تختلف عن كلمة المرور الحالية"), 400
+
+    db = get_db(); cur = db.cursor()
+    cur.execute(f"SELECT password_hash, email FROM users WHERE id={ph()}", (uid,))
+    u = _row_to_dict(cur.fetchone())
+    if not u:
+        db.close()
+        return jsonify(success=False, message="المستخدم غير موجود"), 404
+
+    if not check_pw(cur_pw, u["password_hash"]):
+        db.close()
+        return jsonify(success=False, message="كلمة المرور الحالية غير صحيحة"), 400
+
+    new_hashed = hash_pw(new_pw)
+    cur.execute(f"UPDATE users SET password_hash={ph()} WHERE id={ph()}", (new_hashed, uid))
+    db.commit()
+    db.close()
+
+    log_action(uid, "CHANGE_PASSWORD", target=u["email"], detail="User changed password", ip=request.remote_addr)
+    return jsonify(success=True, message="تم تغيير كلمة المرور بنجاح ✓")
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════
@@ -594,11 +639,10 @@ def register():
             app.logger.warning(f"Failed to process image: {e}")
             return jsonify(success=False, message="الملف المرفوع ليس صورة صالحة أو أنه تالف."), 400
 
-        # Face check (after processing)
-        faces = detect_faces(processed)
-        if not faces:
-            return jsonify(success=False,
-                message="لم يتم اكتشاف وجه بشري. يرجى رفع صورة شخصية واضحة أو تعطيل القص التلقائي"), 400
+        # Single-person face check (after processing)
+        is_valid, face_msg, _ = validate_single_person(processed)
+        if not is_valid:
+            return jsonify(success=False, message=face_msg), 400
 
         # Save
         result = save_image(processed, student_id, year, college, UPLOAD_FOLDER)
@@ -710,9 +754,10 @@ def update_photo(student_id):
         processed = apply_edits(raw, rotation=rotation, flip_h=flip_h,
                                 zoom=zoom, offset_x=offset_x, offset_y=offset_y,
                                 auto_crop=auto_crop)
-        if not detect_faces(processed):
-            db.close(); return jsonify(success=False,
-                message="لم يتم اكتشاف وجه. جرب تعطيل القص التلقائي"), 400
+        is_valid, face_msg, _ = validate_single_person(processed)
+        if not is_valid:
+            db.close()
+            return jsonify(success=False, message=face_msg), 400
 
         # Archive old
         old_rel = row.get("image_path","")
@@ -877,33 +922,83 @@ def admin_users():
 @app.route("/admin/users/create", methods=["POST"])
 @role_required("superadmin")
 def admin_create_user():
-    data      = request.get_json()
-    email     = data.get("email","").strip().lower()
-    role      = data.get("role","staff")
+    data      = request.get_json() or {}
+    email     = (data.get("email") or "").strip().lower()
+    role      = data.get("role", "staff")
     college   = data.get("college") or None
-    full_name = data.get("full_name","").strip()
+    full_name = (data.get("full_name") or "").strip()
+    password  = (data.get("password") or "").strip()
+
+    if not full_name or len(full_name.split()) < 2:
+        return jsonify(success=False, message="يرجى إدخال الاسم الكامل للمستخدم"), 400
     if not validate_university_email(email):
-        return jsonify(success=False, message=f"يجب استخدام @{UNIVERSITY_DOMAIN}"), 400
+        return jsonify(success=False, message=f"يجب استخدام بريد الجامعة (@{UNIVERSITY_DOMAIN})"), 400
     if role not in ROLES or role == "student":
         return jsonify(success=False, message="دور غير صالح — الطلاب يسجلون بأنفسهم"), 400
-    temp_pw  = secrets.token_urlsafe(10)
-    hashed   = hash_pw(temp_pw)
-    token    = secrets.token_urlsafe(32)
+    if not password or len(password) < 8:
+        return jsonify(success=False, message="كلمة المرور يجب أن تكون 8 أحرف على الأقل"), 400
+
+    hashed = hash_pw(password)
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
-            f"INSERT INTO users (email,password_hash,full_name,role,college,verify_token,email_verified) VALUES ({','.join([ph()]*7)})",
-            (email,hashed,full_name,role,college,token, 0 if not USE_PG else False)
+            f"INSERT INTO users (email,password_hash,full_name,role,college,email_verified,is_active) VALUES ({','.join([ph()]*7)})",
+            (email, hashed, full_name, role, college, 1 if not USE_PG else True, 1 if not USE_PG else True)
         )
         db.commit()
     except Exception as e:
         db.close()
-        return jsonify(success=False, message="البريد مسجل مسبقاً"), 409
+        return jsonify(success=False, message="البريد الإلكتروني مسجل مسبقاً"), 409
     db.close()
-    link = url_for("auth_verify", token=token, _external=True)
-    send_email(email, "تفعيل حساب نظام التسجيل", _email_verify_html(full_name, link))
-    log_action(session.get("user_id"), "CREATE_USER", target=email, ip=request.remote_addr)
-    return jsonify(success=True, message=f"تم إنشاء الحساب وإرسال بريد التفعيل لـ {email}")
+
+    try:
+        send_email(
+            email,
+            "تم إنشاء حسابك في نظام التسجيل الجامعي",
+            f"""
+            <div dir="rtl" style="font-family:Cairo,Arial;max-width:520px;margin:auto">
+              <div style="background:#0d1f3c;padding:28px;border-radius:14px 14px 0 0;text-align:center">
+                <h2 style="color:#e8b84b;margin:0">مرحباً بك في نظام التسجيل</h2>
+              </div>
+              <div style="background:#f0f4f9;padding:28px;border-radius:0 0 14px 14px">
+                <p>أهلاً <strong>{full_name}</strong>،</p>
+                <p>تم إنشاء حساب لك بدور: <strong>{ROLES.get(role, role)}</strong>.</p>
+                <p>يمكنك الآن تسجيل الدخول باستخدام بريدك الجامعي وكلمة المرور المحددة لك من قبل الإدارة.</p>
+                <p style="color:#6b7a99;font-size:.85rem">يمكنك تغيير كلمة مرورك في أي وقت بسهولة من داخل حسابك بعد تسجيل الدخول.</p>
+              </div>
+            </div>
+            """
+        )
+    except Exception:
+        pass
+
+    log_action(session.get("user_id"), "CREATE_USER", target=email, detail=f"Role: {role}", ip=request.remote_addr)
+    return jsonify(success=True, message=f"تم إنشاء حساب {full_name} بنجاح ويمكنه تسجيل الدخول بكلمة المرور المحددة")
+
+
+@app.route("/admin/users/<int:uid>/reset-password", methods=["POST"])
+@role_required("superadmin")
+def admin_reset_user_password(uid):
+    """Allow superadmin to set/reset any user's password directly."""
+    data = request.get_json() if request.is_json else request.form
+    new_pw = (data.get("new_password") or "").strip()
+    if not new_pw or len(new_pw) < 8:
+        return jsonify(success=False, message="كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل"), 400
+
+    db = get_db(); cur = db.cursor()
+    cur.execute(f"SELECT email, full_name FROM users WHERE id={ph()}", (uid,))
+    u = _row_to_dict(cur.fetchone())
+    if not u:
+        db.close()
+        return jsonify(success=False, message="المستخدم غير موجود"), 404
+
+    new_hashed = hash_pw(new_pw)
+    cur.execute(f"UPDATE users SET password_hash={ph()} WHERE id={ph()}", (new_hashed, uid))
+    db.commit()
+    db.close()
+
+    log_action(session.get("user_id"), "ADMIN_RESET_PASSWORD", target=u["email"], detail=f"Reset password for {u['full_name']}", ip=request.remote_addr)
+    return jsonify(success=True, message=f"تم تعيين كلمة المرور الجديدة للمستخدم {u['full_name']} بنجاح ✓")
 
 
 @app.route("/admin/users/<int:uid>/toggle", methods=["POST"])
@@ -1371,9 +1466,9 @@ def student_self_register_post():
         except Exception as e:
             app.logger.warning(f"Failed to process student self-registration image: {e}")
             return jsonify(success=False, message="الملف المرفوع ليس صورة صالحة أو أنه تالف."), 400
-        if not face_detected(processed):
-            return jsonify(success=False,
-                message="لم يتم اكتشاف وجه. يرجى رفع صورة شخصية واضحة"), 400
+        is_valid, face_msg, _ = validate_single_person(processed)
+        if not is_valid:
+            return jsonify(success=False, message=face_msg), 400
 
         result = save_image(processed, student_id, year, college, UPLOAD_FOLDER)
 

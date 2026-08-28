@@ -216,9 +216,12 @@ footer a{color:var(--gold);text-decoration:none}
       <div class="sb-user-info">
         <span>{{ session.get('user_name','') }}</span>
         <small>{{ session.get('email','') }}</small>
-        <span class="sb-role-badge">{{ {'superadmin':'مدير','admin':'مسؤول','staff':'موظف'}.get(session.get('role',''),'') }}</span>
+        <span class="sb-role-badge">{{ {'superadmin':'مدير','admin':'مسؤول','staff':'موظف','student':'طالب'}.get(session.get('role',''),'') }}</span>
       </div>
     </div>
+    <button onclick="openChangePwModal()" class="btn-logout" style="background:rgba(232,184,75,.12);color:var(--gold2);border-color:rgba(232,184,75,.25);margin-bottom:6px">
+      <svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg> تغيير كلمة المرور
+    </button>
     <a href="{{ url_for('auth_logout') }}" class="btn-logout">
       <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg> تسجيل الخروج
     </a>
@@ -233,6 +236,43 @@ footer a{color:var(--gold);text-decoration:none}
 
 <div id="toast"><svg viewBox="0 0 24 24" id="toast-icon"></svg><span id="toast-msg"></span></div>
 
+{% if session.get('user_id') %}
+<!-- GLOBAL CHANGE PASSWORD MODAL -->
+<div class="modal-bg" id="change-pw-modal">
+  <div class="modal" style="max-width:420px;text-align:right">
+    <h3 style="text-align:right;margin-bottom:14px">تغيير كلمة المرور</h3>
+    <div class="modal-form">
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:4px">كلمة المرور الحالية <span class="req">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="cp-cur-pw" placeholder="كلمة المرور الحالية" style="padding-left:42px">
+          <button type="button" onclick="togglePwVisibility('cp-cur-pw', this)" class="btn btn-outline btn-sm" style="position:absolute;left:6px;padding:3px 7px;font-size:.7rem" title="إظهار/إخفاء">👁</button>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:4px">كلمة المرور الجديدة <span class="req">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="cp-new-pw" placeholder="8 أحرف على الأقل" style="padding-left:42px">
+          <button type="button" onclick="togglePwVisibility('cp-new-pw', this)" class="btn btn-outline btn-sm" style="position:absolute;left:6px;padding:3px 7px;font-size:.7rem" title="إظهار/إخفاء">👁</button>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:4px">تأكيد كلمة المرور الجديدة <span class="req">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="cp-new-pw2" placeholder="أعد كتابة كلمة المرور الجديدة" style="padding-left:42px">
+          <button type="button" onclick="togglePwVisibility('cp-new-pw2', this)" class="btn btn-outline btn-sm" style="position:absolute;left:6px;padding:3px 7px;font-size:.7rem" title="إظهار/إخفاء">👁</button>
+        </div>
+      </div>
+      <div id="cp-msg" style="font-size:.82rem;padding:8px 11px;border-radius:7px;margin-bottom:8px;display:none"></div>
+    </div>
+    <div class="modal-actions" style="display:flex;gap:8px">
+      <button class="btn btn-outline" style="flex:1" onclick="closeChangePwModal()">إلغاء</button>
+      <button class="btn btn-primary" style="flex:1" id="cp-submit-btn" onclick="submitChangePassword()">حفظ التغيير</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script>
 function showToast(msg,type='success'){
   const t=document.getElementById('toast');
@@ -244,6 +284,86 @@ function showToast(msg,type='success'){
   t.className='show '+type;
   clearTimeout(t._tid);
   t._tid=setTimeout(()=>t.className='',5000);
+}
+
+function openChangePwModal() {
+  const modal = document.getElementById('change-pw-modal');
+  if (!modal) return;
+  document.getElementById('cp-cur-pw').value  = '';
+  document.getElementById('cp-new-pw').value  = '';
+  document.getElementById('cp-new-pw2').value = '';
+  document.getElementById('cp-msg').style.display = 'none';
+  modal.classList.add('open');
+}
+function closeChangePwModal() {
+  document.getElementById('change-pw-modal')?.classList.remove('open');
+}
+document.getElementById('change-pw-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeChangePwModal();
+});
+
+function togglePwVisibility(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
+  if (btn) btn.textContent = el.type === 'password' ? '👁' : '🔒';
+}
+
+async function submitChangePassword() {
+  const curPw = document.getElementById('cp-cur-pw').value.trim();
+  const newPw = document.getElementById('cp-new-pw').value.trim();
+  const newPw2 = document.getElementById('cp-new-pw2').value.trim();
+  const msg   = document.getElementById('cp-msg');
+  const btn   = document.getElementById('cp-submit-btn');
+
+  if (!curPw) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'يرجى إدخال كلمة المرور الحالية'; return;
+  }
+  if (!newPw || newPw.length < 8) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل'; return;
+  }
+  if (newPw !== newPw2) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'كلمتا المرور الجديدتان غير متطابقتين'; return;
+  }
+  if (curPw === newPw) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'كلمة المرور الجديدة يجب أن تختلف عن الحالية'; return;
+  }
+
+  btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
+  try {
+    const metaCsrf = document.querySelector('meta[name="csrf-token"]');
+    const token = metaCsrf ? metaCsrf.getAttribute('content') : '';
+    const res = await fetch('/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': token
+      },
+      body: JSON.stringify({
+        current_password: curPw,
+        new_password: newPw,
+        confirm_password: newPw2
+      })
+    });
+    const data = await res.json();
+    msg.style.display = 'block';
+    msg.style.color   = data.success ? 'var(--success)' : 'var(--danger)';
+    msg.style.background = data.success ? '#f0fff4' : '#fff5f5';
+    msg.textContent = data.message;
+    if (data.success) {
+      showToast(data.message, 'success');
+      setTimeout(closeChangePwModal, 1500);
+    }
+  } catch (err) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'تعذر الاتصال بالخادم';
+  } finally {
+    btn.disabled = false; btn.textContent = 'حفظ التغيير';
+  }
 }
 </script>
 {% block scripts %}{% endblock %}

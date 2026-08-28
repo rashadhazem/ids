@@ -36,8 +36,8 @@ try:
     import cv2
     _CASCADE_PATHS = [
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml",
-        cv2.data.haarcascades + "haarcascade_frontalface_alt.xml",
         cv2.data.haarcascades + "haarcascade_frontalface_alt2.xml",
+        cv2.data.haarcascades + "haarcascade_frontalface_alt.xml",
     ]
     if hasattr(cv2, "CascadeClassifier"):
         for path in _CASCADE_PATHS:
@@ -84,8 +84,49 @@ def _normalize_image_bytes(image_bytes: bytes) -> bytes:
     return _pil_to_bytes(pil)
 
 
+def _non_max_suppression(boxes: list[tuple[int, int, int, int]], overlap_thresh: float = 0.3) -> list[tuple[int, int, int, int]]:
+    """
+    Apply Non-Maximum Suppression to eliminate overlapping bounding boxes for the same face.
+    boxes format: [(x, y, w, h), ...]
+    """
+    if not boxes:
+        return []
+
+    rects = []
+    for (x, y, w, h) in boxes:
+        rects.append([x, y, x + w, y + h, w * h])
+
+    rects = sorted(rects, key=lambda b: b[4], reverse=True)
+    picked = []
+
+    while rects:
+        current = rects.pop(0)
+        picked.append((current[0], current[1], current[2] - current[0], current[3] - current[1]))
+
+        remaining = []
+        for r in rects:
+            xx1 = max(current[0], r[0])
+            yy1 = max(current[1], r[1])
+            xx2 = min(current[2], r[2])
+            yy2 = min(current[3], r[3])
+
+            w_inter = max(0, xx2 - xx1)
+            h_inter = max(0, yy2 - yy1)
+            inter_area = w_inter * h_inter
+
+            min_area = min(current[4], r[4])
+            iou = inter_area / float(current[4] + r[4] - inter_area) if (current[4] + r[4] - inter_area) > 0 else 0
+            overlap_smaller = inter_area / float(min_area) if min_area > 0 else 0
+
+            if iou < overlap_thresh and overlap_smaller < 0.5:
+                remaining.append(r)
+        rects = remaining
+
+    return picked
+
+
 def detect_faces_opencv(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
-    """Fallback face detection using OpenCV cascades."""
+    """Face detection using OpenCV cascades with CLAHE and Non-Maximum Suppression."""
     if not _CASCADES:
         return []
     
@@ -93,33 +134,31 @@ def detect_faces_opencv(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
     if cv_img is None:
         return []
 
-    # Downscale for speed
     orig_h, orig_w = cv_img.shape[:2]
     max_dim = 1000
+    scale_x, scale_y = 1.0, 1.0
     if max(orig_h, orig_w) > max_dim:
         sc = max_dim / max(orig_h, orig_w)
         cv_img = cv2.resize(cv_img, (int(orig_w * sc), int(orig_h * sc)))
-
-    det_h, det_w = cv_img.shape[:2]
-    scale_x = orig_w / det_w
-    scale_y = orig_h / det_h
+        det_h, det_w = cv_img.shape[:2]
+        scale_x = orig_w / det_w
+        scale_y = orig_h / det_h
 
     gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
 
-    faces = []
+    all_detected = []
     for cascade in _CASCADES:
         detected = cascade.detectMultiScale(
             gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
         )
         if len(detected) > 0:
-            # Scale back to original coordinates
-            scaled = [(int(x*scale_x), int(y*scale_y), int(w*scale_x), int(h*scale_y))
+            scaled = [(int(x * scale_x), int(y * scale_y), int(w * scale_x), int(h * scale_y))
                       for (x, y, w, h) in detected]
-            faces.extend(scaled)
-            break  # Use first successful cascade
+            all_detected.extend(scaled)
 
-    return faces
+    return _non_max_suppression(all_detected)
 
 
 def detect_faces(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
@@ -130,51 +169,91 @@ def detect_faces(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
     return detect_faces_opencv(normalized_bytes)
 
 
+def count_faces(image_bytes: bytes) -> int:
+    """Return total number of distinct human faces detected in the image."""
+    return len(detect_faces(image_bytes))
+
+
+def validate_single_person(image_bytes: bytes) -> tuple[bool, str, list[tuple[int, int, int, int]]]:
+    """
+    Validate that the uploaded image contains strictly ONE person/face.
+    Returns (is_valid: bool, message: str, faces: list).
+    """
+    try:
+        faces = detect_faces(image_bytes)
+        count = len(faces)
+        if count == 0:
+            return (
+                False,
+                "لم يتم اكتشاف أي وجه بشري في الصورة. يرجى رفع صورة شخصية واضحة تظهر الوجه بالكامل.",
+                [],
+            )
+        elif count > 1:
+            return (
+                False,
+                f"تحتوي الصورة على أكثر من شخص ({count} أشخاص). يجب أن تحتوي الصورة على شخص واحد فقط.",
+                faces,
+            )
+        return True, "تم التحقق من الصورة بنجاح (شخص واحد).", faces
+    except Exception as e:
+        return False, f"حدث خطأ أثناء معالجة فحص الصورة: {e}", []
+
+
 def face_detected(image_bytes: bytes) -> bool:
-    faces = detect_faces(image_bytes)
-    print("Faces detected:", faces)
-    return len(faces) > 0
+    """Check if at least one face is detected."""
+    return len(detect_faces(image_bytes)) > 0
 
 
 def smart_crop_face(image_bytes: bytes) -> bytes:
     """
-    Auto-crop the image centered on the largest detected face.
-    Adds headroom above and body below.
-    Returns 400x500 JPEG bytes.
-    If no face is found, returns a centered crop.
+    Auto-crop the image centered on the detected face with strict 4:5 aspect ratio (400x500).
+    Adds proper headroom above and upper body below, avoiding any distortion.
     """
     normalized_bytes = _normalize_image_bytes(image_bytes)
     pil = Image.open(io.BytesIO(normalized_bytes)).convert("RGB")
+    iw, ih = pil.size
 
     faces = detect_faces(normalized_bytes)
-    iw, ih = pil.size
+    target_ar = TARGET_W / TARGET_H  # 400 / 500 = 0.8
 
     if faces:
         fx, fy, fw, fh = max(faces, key=lambda r: r[2] * r[3])
         face_cx = fx + fw // 2
         face_cy = fy + fh // 2
 
-        crop_h = int(fh * 3.5)
-        crop_w = int(crop_h * TARGET_W / TARGET_H)
+        # Desired crop height: face should occupy ~45-50% of the ID frame
+        crop_h = int(fh * 2.2)
+        crop_w = int(crop_h * target_ar)
 
-        top = face_cy - int(crop_h * 0.28)
-        left = face_cx - crop_w // 2
-        if crop_w > iw or crop_h > ih:
-            top, left, crop_w, crop_h = 0, 0, iw, ih
-        else:
-            top = max(0, min(top, ih - crop_h))
-            left = max(0, min(left, iw - crop_w))
+        # If desired crop exceeds image bounds, scale down preserving exact 4:5 aspect ratio
+        if crop_h > ih or crop_w > iw:
+            if iw / ih > target_ar:
+                crop_h = ih
+                crop_w = int(crop_h * target_ar)
+            else:
+                crop_w = iw
+                crop_h = int(crop_w / target_ar)
+
+        # Center horizontally on face, clamped within image boundaries
+        left = int(face_cx - crop_w // 2)
+        left = max(0, min(left, iw - crop_w))
+
+        # Position vertically: leave ~18% headroom above top of face
+        top = int(fy - int(crop_h * 0.18))
+        top = max(0, min(top, ih - crop_h))
+
     else:
-        ar = TARGET_W / TARGET_H
-        if iw / ih > ar:
-            crop_w = int(ih * ar)
+        # Fallback centered 4:5 crop without face
+        if iw / ih > target_ar:
             crop_h = ih
+            crop_w = int(ih * target_ar)
         else:
-            crop_h = int(iw / ar)
             crop_w = iw
+            crop_h = int(iw / target_ar)
         left = (iw - crop_w) // 2
         top = (ih - crop_h) // 2
 
+    # Crop and high-quality resize
     cropped = pil.crop((left, top, left + crop_w, top + crop_h))
     resized = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
     return _pil_to_bytes(resized)
@@ -219,8 +298,20 @@ def apply_edits(
     if auto_crop:
         return smart_crop_face(edited_bytes)
 
-    pil = pil.resize((TARGET_W, TARGET_H), Image.LANCZOS)
-    return _pil_to_bytes(pil)
+    # Ensure 4:5 aspect ratio without distortion if manual crop
+    target_ar = TARGET_W / TARGET_H
+    iw, ih = pil.size
+    if iw / ih > target_ar:
+        crop_w = int(ih * target_ar)
+        crop_h = ih
+    else:
+        crop_h = int(iw / target_ar)
+        crop_w = iw
+    left = (iw - crop_w) // 2
+    top = (ih - crop_h) // 2
+    cropped = pil.crop((left, top, left + crop_w, top + crop_h))
+    resized = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
+    return _pil_to_bytes(resized)
 
 
 def _college_folder(college: str) -> str:
@@ -233,12 +324,13 @@ def save_image(
     image_bytes: bytes, student_id: str, year: str, college: str, upload_root: str
 ) -> dict:
     """
-    Save processed image if it contains a human face.
+    Save processed image if it contains strictly one human face.
     Local path: uploads/{year}/{college}/{student_id}.jpg
     Returns { "path": relative_path, "url": public_url }
     """
-    if not face_detected(image_bytes):
-        raise ValueError("الصورة لا تحتوي على وجه بشري. الصورة غير مطابقة للمعايير.")
+    is_valid, msg, _ = validate_single_person(image_bytes)
+    if not is_valid:
+        raise ValueError(msg)
 
     # Mirror copy backup to Microsoft OneDrive if enabled
     try:

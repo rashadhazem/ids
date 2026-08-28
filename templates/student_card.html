@@ -425,8 +425,17 @@
       <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
     </svg>
   </div>
-  <div style="display:flex;justify-content:flex-end;padding:0 24px 12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:0 24px 14px">
+    {% if session.get('user_id') %}
+    <button onclick="openChangePwModal()" class="logout-btn" style="cursor:pointer;font-family:'Cairo';border-color:rgba(232,184,75,.4);background:rgba(232,184,75,.15);font-size:.78rem">
+      <svg style="width:14px;height:14px;fill:var(--gold2)" viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+      تغيير كلمة المرور
+    </button>
     <a class="logout-btn" href="{{ url_for('auth_logout') }}">تسجيل خروج</a>
+    {% else %}
+    <div></div>
+    <a class="logout-btn" href="{{ url_for('student_login') }}">تسجيل الدخول</a>
+    {% endif %}
   </div>
 </div>
 
@@ -755,6 +764,125 @@ document.getElementById('update-btn').addEventListener('click', async function()
 // init canvas size on load
 window.addEventListener('load', initCanvas);
 window.addEventListener('resize', () => { initCanvas(); draw(); });
+
+// ── Change Password Modal Handlers ──
+function openChangePwModal() {
+  const modal = document.getElementById('change-pw-modal');
+  if (!modal) return;
+  document.getElementById('cp-cur-pw').value  = '';
+  document.getElementById('cp-new-pw').value  = '';
+  document.getElementById('cp-new-pw2').value = '';
+  document.getElementById('cp-msg').style.display = 'none';
+  modal.style.display = 'flex';
+}
+function closeChangePwModal() {
+  const modal = document.getElementById('change-pw-modal');
+  if (modal) modal.style.display = 'none';
+}
+document.getElementById('change-pw-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeChangePwModal();
+});
+
+function togglePwVisibility(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
+  if (btn) btn.textContent = el.type === 'password' ? '👁' : '🔒';
+}
+
+async function submitChangePassword() {
+  const curPw  = document.getElementById('cp-cur-pw').value.trim();
+  const newPw  = document.getElementById('cp-new-pw').value.trim();
+  const newPw2 = document.getElementById('cp-new-pw2').value.trim();
+  const msg    = document.getElementById('cp-msg');
+  const btn    = document.getElementById('cp-submit-btn');
+
+  if (!curPw) {
+    msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
+    msg.textContent = 'يرجى إدخال كلمة المرور الحالية'; return;
+  }
+  if (!newPw || newPw.length < 8) {
+    msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
+    msg.textContent = 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل'; return;
+  }
+  if (newPw !== newPw2) {
+    msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
+    msg.textContent = 'كلمتا المرور الجديدتان غير متطابقتين'; return;
+  }
+  if (curPw === newPw) {
+    msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
+    msg.textContent = 'كلمة المرور الجديدة يجب أن تختلف عن الحالية'; return;
+  }
+
+  btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
+  try {
+    const metaCsrf = document.querySelector('meta[name="csrf-token"]');
+    const token = metaCsrf ? metaCsrf.getAttribute('content') : '';
+    const res = await fetch('/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': token
+      },
+      body: JSON.stringify({
+        current_password: curPw,
+        new_password: newPw,
+        confirm_password: newPw2
+      })
+    });
+    const data = await res.json();
+    msg.style.display = 'block';
+    msg.style.color   = data.success ? '#68d391' : '#fc8181';
+    msg.style.background = data.success ? 'rgba(39,103,73,.2)' : 'rgba(197,48,48,.15)';
+    msg.textContent = data.message;
+    if (data.success) {
+      toast(data.message, 'success');
+      setTimeout(closeChangePwModal, 1500);
+    }
+  } catch (err) {
+    msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
+    msg.textContent = 'تعذر الاتصال بالخادم';
+  } finally {
+    btn.disabled = false; btn.textContent = 'حفظ التغيير';
+  }
+}
 </script>
+
+{% if session.get('user_id') %}
+<!-- CHANGE PASSWORD MODAL FOR STUDENT CARD -->
+<div id="change-pw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#0d1f3c;border:1px solid rgba(232,184,75,.3);border-radius:16px;padding:24px;width:100%;max-width:400px;text-align:right;color:#fff;font-family:'Cairo'">
+    <h3 style="font-size:1.05rem;font-weight:700;color:var(--gold2);margin-bottom:14px">تغيير كلمة المرور</h3>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px">
+      <div>
+        <label style="font-size:.8rem;color:rgba(255,255,255,.8);display:block;margin-bottom:4px">كلمة المرور الحالية <span style="color:#fc8181">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="cp-cur-pw" placeholder="كلمة المرور الحالية" style="width:100%;padding:9px 12px;padding-left:42px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#fff;font-family:'Cairo';outline:none">
+          <button type="button" onclick="togglePwVisibility('cp-cur-pw', this)" style="position:absolute;left:6px;background:none;border:none;color:var(--gold2);cursor:pointer;font-size:.9rem" title="إظهار/إخفاء">👁</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.8rem;color:rgba(255,255,255,.8);display:block;margin-bottom:4px">كلمة المرور الجديدة <span style="color:#fc8181">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="cp-new-pw" placeholder="8 أحرف على الأقل" style="width:100%;padding:9px 12px;padding-left:42px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#fff;font-family:'Cairo';outline:none">
+          <button type="button" onclick="togglePwVisibility('cp-new-pw', this)" style="position:absolute;left:6px;background:none;border:none;color:var(--gold2);cursor:pointer;font-size:.9rem" title="إظهار/إخفاء">👁</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.8rem;color:rgba(255,255,255,.8);display:block;margin-bottom:4px">تأكيد كلمة المرور الجديدة <span style="color:#fc8181">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="cp-new-pw2" placeholder="أعد كتابة كلمة المرور" style="width:100%;padding:9px 12px;padding-left:42px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#fff;font-family:'Cairo';outline:none">
+          <button type="button" onclick="togglePwVisibility('cp-new-pw2', this)" style="position:absolute;left:6px;background:none;border:none;color:var(--gold2);cursor:pointer;font-size:.9rem" title="إظهار/إخفاء">👁</button>
+        </div>
+      </div>
+      <div id="cp-msg" style="font-size:.82rem;padding:8px 12px;border-radius:8px;display:none"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="closeChangePwModal()" style="flex:1;padding:9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;font-family:'Cairo';font-weight:600;cursor:pointer">إلغاء</button>
+      <button id="cp-submit-btn" onclick="submitChangePassword()" style="flex:1;padding:9px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;border-radius:8px;font-family:'Cairo';font-weight:700;cursor:pointer">حفظ التغيير</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 </body>
 </html>

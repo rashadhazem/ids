@@ -334,12 +334,23 @@
     <h3 style="text-align:right;margin-bottom:16px">إضافة مستخدم جديد</h3>
     <div class="modal-form">
       <div class="field">
-        <label>الاسم الكامل</label>
-        <input type="text" id="nu-name" placeholder="الاسم الكامل">
+        <label>الاسم الكامل <span class="req">*</span></label>
+        <input type="text" id="nu-name" placeholder="الاسم الكامل للمستخدم">
       </div>
       <div class="field">
-        <label>البريد الإلكتروني (@{{ domain }})</label>
+        <label>البريد الإلكتروني (@{{ domain }}) <span class="req">*</span></label>
         <input type="email" id="nu-email" placeholder="user@{{ domain }}">
+      </div>
+      <div class="field">
+        <label>كلمة المرور الابتدائية <span class="req">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="nu-password" placeholder="8 أحرف على الأقل" style="padding-left:75px">
+          <div style="position:absolute;left:8px;display:flex;gap:4px">
+            <button type="button" onclick="togglePwVisibility('nu-password', this)" class="btn btn-outline btn-sm" style="padding:4px 7px;font-size:.7rem" title="إظهار/إخفاء">👁</button>
+            <button type="button" onclick="generateRandomPw('nu-password')" class="btn btn-outline btn-sm" style="padding:4px 7px;font-size:.7rem" title="توليد كلمة مرور">🎲</button>
+          </div>
+        </div>
+        <small style="color:var(--muted);font-size:.72rem;display:block;margin-top:3px;font-family:'Tajawal'">يستطيع المستخدم تغيير كلمة المرور في أي وقت بعد الدخول.</small>
       </div>
       <div class="field">
         <label>الدور</label>
@@ -363,7 +374,35 @@
     <div class="modal-actions">
       <button class="btn btn-outline" style="flex:1" onclick="closeCreateUser()">إلغاء</button>
       <button class="btn btn-primary" style="flex:1" id="create-user-btn" onclick="submitCreateUser()">
-        إنشاء وإرسال بريد التفعيل
+        إنشاء الحساب
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- RESET USER PASSWORD MODAL -->
+<div class="modal-bg" id="reset-user-pw-modal">
+  <div class="modal" style="max-width:440px;text-align:right">
+    <h3 style="text-align:right;margin-bottom:12px">تعيين كلمة مرور للمستخدم</h3>
+    <p id="ru-user-info" style="font-size:.82rem;color:var(--blue);margin-bottom:14px;background:#f0f4f9;padding:8px 12px;border-radius:8px"></p>
+    <div class="modal-form">
+      <input type="hidden" id="ru-uid">
+      <div class="field">
+        <label>كلمة المرور الجديدة <span class="req">*</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="ru-password" placeholder="8 أحرف على الأقل" style="padding-left:75px">
+          <div style="position:absolute;left:8px;display:flex;gap:4px">
+            <button type="button" onclick="togglePwVisibility('ru-password', this)" class="btn btn-outline btn-sm" style="padding:4px 7px;font-size:.7rem" title="إظهار/إخفاء">👁</button>
+            <button type="button" onclick="generateRandomPw('ru-password')" class="btn btn-outline btn-sm" style="padding:4px 7px;font-size:.7rem" title="توليد كلمة مرور">🎲</button>
+          </div>
+        </div>
+      </div>
+      <div id="ru-msg" style="font-size:.82rem;padding:8px 11px;border-radius:7px;margin-bottom:6px;display:none"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" style="flex:1" onclick="closeResetUserPw()">إلغاء</button>
+      <button class="btn btn-primary" style="flex:1" id="reset-user-pw-btn" onclick="submitResetUserPw()">
+        حفظ كلمة المرور
       </button>
     </div>
   </div>
@@ -569,15 +608,43 @@ function userCard(u, rl) {
           ${!u.is_active ? '<span class="badge badge-red">موقوف</span>' : ''}
         </span>
       </div>
-      <button onclick="toggleUser(${u.id})" class="btn btn-sm ${u.is_active?'btn-outline':'btn-success'}"
-        title="${u.is_active?'إيقاف الحساب':'تفعيل الحساب'}">
-        <svg style="width:13px;height:13px;fill:currentColor" viewBox="0 0 24 24">
-          ${u.is_active
-            ? '<path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/>'
-            : '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'}
-        </svg>
-      </button>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button onclick="openResetUserPw(${u.id}, '${escapeHTML(u.full_name)}', '${escapeHTML(u.email)}')"
+          class="btn btn-sm btn-outline" title="تعيين كلمة مرور جديدة">
+          <svg style="width:13px;height:13px;fill:currentColor" viewBox="0 0 24 24">
+            <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
+          </svg>
+        </button>
+        <button onclick="toggleUser(${u.id})" class="btn btn-sm ${u.is_active?'btn-outline':'btn-success'}"
+          title="${u.is_active?'إيقاف الحساب':'تفعيل الحساب'}">
+          <svg style="width:13px;height:13px;fill:currentColor" viewBox="0 0 24 24">
+            ${u.is_active
+              ? '<path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/>'
+              : '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'}
+          </svg>
+        </button>
+      </div>
     </div>`;
+}
+
+function togglePwVisibility(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
+  if (btn) btn.textContent = el.type === 'password' ? '👁' : '🔒';
+}
+
+function generateRandomPw(inputId) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+  let pw = '';
+  for (let i = 0; i < 10; i++) {
+    pw += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  const el = document.getElementById(inputId);
+  if (el) {
+    el.value = pw;
+    el.type = 'text';
+  }
 }
 
 async function toggleUser(uid) {
@@ -594,8 +661,9 @@ async function toggleUser(uid) {
 
 function openCreateUser() {
   document.getElementById('nu-msg').style.display = 'none';
-  document.getElementById('nu-name').value  = '';
-  document.getElementById('nu-email').value = '';
+  document.getElementById('nu-name').value     = '';
+  document.getElementById('nu-email').value    = '';
+  document.getElementById('nu-password').value = '';
   document.getElementById('create-user-modal').classList.add('open');
 }
 function closeCreateUser() {
@@ -606,30 +674,115 @@ document.getElementById('create-user-modal')?.addEventListener('click', function
 });
 
 async function submitCreateUser() {
-  const btn = document.getElementById('create-user-btn');
-  const msg = document.getElementById('nu-msg');
+  const btn  = document.getElementById('create-user-btn');
+  const msg  = document.getElementById('nu-msg');
+  const name = document.getElementById('nu-name').value.trim();
+  const mail = document.getElementById('nu-email').value.trim();
+  const pw   = document.getElementById('nu-password').value.trim();
+  const role = document.getElementById('nu-role').value;
+  const col  = document.getElementById('nu-college').value || null;
+
+  if (!name || name.split(' ').length < 2) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'يرجى إدخال الاسم الكامل للمستخدم'; return;
+  }
+  if (!mail) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'يرجى إدخال البريد الإلكتروني'; return;
+  }
+  if (!pw || pw.length < 8) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل'; return;
+  }
+
   btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
-  const res  = await fetch('/admin/users/create', {
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'X-CSRFToken': csrfToken
-    },
-    body: JSON.stringify({
-      full_name: document.getElementById('nu-name').value.trim(),
-      email:     document.getElementById('nu-email').value.trim(),
-      role:      document.getElementById('nu-role').value,
-      college:   document.getElementById('nu-college').value || null
-    })
-  });
-  const data = await res.json();
-  msg.style.display = 'block';
-  msg.style.color   = data.success ? 'var(--success)' : 'var(--danger)';
-  msg.style.background = data.success ? '#f0fff4' : '#fff5f5';
-  msg.style.padding = '8px 11px'; msg.style.borderRadius = '7px';
-  msg.textContent = data.message;
-  btn.disabled = false; btn.textContent = 'إنشاء وإرسال بريد التفعيل';
-  if (data.success) { loadUsers(); setTimeout(closeCreateUser, 2500); }
+  try {
+    const res  = await fetch('/admin/users/create', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({
+        full_name: name,
+        email:     mail,
+        password:  pw,
+        role:      role,
+        college:   col
+      })
+    });
+    const data = await res.json();
+    msg.style.display = 'block';
+    msg.style.color   = data.success ? 'var(--success)' : 'var(--danger)';
+    msg.style.background = data.success ? '#f0fff4' : '#fff5f5';
+    msg.style.padding = '8px 11px'; msg.style.borderRadius = '7px';
+    msg.textContent = data.message;
+    if (data.success) {
+      loadUsers();
+      setTimeout(closeCreateUser, 2000);
+      showToast(data.message, 'success');
+    }
+  } catch (err) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'تعذر الاتصال بالخادم';
+  } finally {
+    btn.disabled = false; btn.textContent = 'إنشاء الحساب';
+  }
+}
+
+// Reset User Password (admin)
+function openResetUserPw(uid, name, email) {
+  const modal = document.getElementById('reset-user-pw-modal');
+  if (!modal) return;
+  document.getElementById('ru-uid').value = uid;
+  document.getElementById('ru-user-info').textContent = `تعيين كلمة مرور لـ: ${name} (${email})`;
+  document.getElementById('ru-password').value = '';
+  document.getElementById('ru-msg').style.display = 'none';
+  modal.classList.add('open');
+}
+function closeResetUserPw() {
+  document.getElementById('reset-user-pw-modal')?.classList.remove('open');
+}
+document.getElementById('reset-user-pw-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeResetUserPw();
+});
+
+async function submitResetUserPw() {
+  const uid = document.getElementById('ru-uid').value;
+  const pw  = document.getElementById('ru-password').value.trim();
+  const btn = document.getElementById('reset-user-pw-btn');
+  const msg = document.getElementById('ru-msg');
+
+  if (!pw || pw.length < 8) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل'; return;
+  }
+
+  btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
+  try {
+    const res = await fetch(`/admin/users/${uid}/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({ new_password: pw })
+    });
+    const data = await res.json();
+    msg.style.display = 'block';
+    msg.style.color   = data.success ? 'var(--success)' : 'var(--danger)';
+    msg.style.background = data.success ? '#f0fff4' : '#fff5f5';
+    msg.textContent = data.message;
+    if (data.success) {
+      showToast(data.message, 'success');
+      setTimeout(closeResetUserPw, 1500);
+    }
+  } catch (err) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'تعذر الاتصال بالخادم';
+  } finally {
+    btn.disabled = false; btn.textContent = 'حفظ كلمة المرور';
+  }
 }
 
 // Audit
