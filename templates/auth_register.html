@@ -63,13 +63,13 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
 .btn:hover{opacity:.92}
 .links{
   display:flex;
-  justify-content:space-between;
+  justify-content:center;
   margin-top:14px;
   flex-wrap:wrap;
   gap:6px
 }
 .links a{
-  font-size:.78rem;
+  font-size:.82rem;
   color:#6b7a99;
   text-decoration:none;
   font-family:'Tajawal'
@@ -99,17 +99,18 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
       <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
       <div>
         {{ success }}
-        <div style="margin-top:6px">
+        <div style="margin-top:8px">
           <a href="{{ url_for('student_login') }}" style="color:#1a3a6b;font-weight:700;text-decoration:underline">سجّل الدخول من هنا</a>
           &nbsp;|&nbsp;
-          <a href="{{ url_for('auth_resend_verification', email=registered_email or '') }}" style="color:#276749;text-decoration:underline">لم يصلك البريد؟ إعادة الإرسال</a>
+          <a href="{{ url_for('auth_resend_verification', email=registered_email or '') }}" style="color:#276749;font-weight:700;text-decoration:underline">لم يصلك البريد؟ إعادة الإرسال</a>
         </div>
       </div>
     </div>
     {% endif %}
     <div class="field">
-      <label>الاسم الكامل</label>
-      <input type="text" name="full_name" required placeholder="الاسم الثلاثي أو الرباعي">
+      <label>الاسم الكامل (باللغة العربية فقط)</label>
+      <input type="text" name="full_name" required placeholder="محمد أحمد علي حسن" pattern="^[\u0621-\u064A\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
+      <p class="hint">يجب إدخال الاسم بالحروف العربية فقط</p>
     </div>
     <div class="field">
       <label>البريد الإلكتروني للجامعة</label>
@@ -126,8 +127,7 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
     </div>
     <button type="submit" class="btn">إنشاء الحساب</button>
     <div class="links">
-      <a href="{{ url_for('auth_login') }}">لديك حساب بالفعل؟ سجّل الدخول</a>
-      <a href="{{ url_for('auth_resend_verification') }}">إعادة إرسال رابط التفعيل</a>
+      <a href="{{ url_for('student_login') }}">لديك حساب بالفعل؟ سجّل الدخول</a>
     </div>
   </form>
 </div>

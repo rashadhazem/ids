@@ -215,10 +215,11 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
       <!-- Name -->
       <div class="step-label">الاسم</div>
       <div class="field">
-        <label>الاسم الرباعي كاملاً <span class="req">*</span></label>
+        <label>الاسم الرباعي كاملاً (باللغة العربية فقط) <span class="req">*</span></label>
         <input type="text" name="full_name" id="full_name" required
-               placeholder="الاسم الأول / الثاني / الثالث / الأخير" autocomplete="off">
-        <p class="field-hint">مثال: محمد أحمد علي حسن</p>
+               placeholder="محمد أحمد علي حسن" autocomplete="off"
+               pattern="^[\u0621-\u064A\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
+        <p class="field-hint">مثال: محمد أحمد علي حسن (يجب أن يكون باللغة العربية فقط)</p>
       </div>
 
       <!-- Student ID -->
@@ -510,6 +511,19 @@ async function updateDupPhoto(){
 document.getElementById('reg-form').addEventListener('submit',async function(e){
   e.preventDefault();
   const btn=document.getElementById('sub-btn'),sp=document.getElementById('sub-spin'),bt=document.getElementById('sub-txt');
+  
+  const fn = document.getElementById('full_name').value.trim();
+  const arRegex = /^[\u0621-\u064A\u0671\s]+$/;
+  if (!fn || !arRegex.test(fn)) {
+    toast('الاسم يجب أن يكون باللغة العربية فقط (بدون أرقام أو حروف إنجليزية)', 'error');
+    return;
+  }
+  const parts = fn.split(/\s+/).filter(Boolean);
+  if (parts.length < 4) {
+    toast('الاسم يجب أن يكون رباعياً على الأقل', 'error');
+    return;
+  }
+
   btn.disabled=true;sp.style.display='block';bt.textContent='جارٍ التسجيل…';
   document.getElementById('code').value=toE(document.getElementById('code').value);
   try{

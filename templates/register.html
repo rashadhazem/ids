@@ -99,9 +99,10 @@
       <div class="form-section">البيانات الشخصية</div>
       <div class="form-row">
         <div class="field">
-          <label>الاسم الرباعي كاملاً <span class="req">*</span></label>
+          <label>الاسم الرباعي كاملاً (باللغة العربية فقط) <span class="req">*</span></label>
           <input type="text" name="full_name" id="full_name" required
-                 placeholder="الاسم الأول / الثاني / الثالث / الأخير" autocomplete="off">
+                 placeholder="محمد أحمد علي حسن" autocomplete="off"
+                 pattern="^[\u0621-\u064A\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
         </div>
       </div>
       <div class="form-row">
@@ -429,6 +430,19 @@ document.getElementById('reg-form').addEventListener('submit', async function(e)
   const btn = document.getElementById('submit-btn');
   const sp  = document.getElementById('spinner');
   const bt  = document.getElementById('btn-txt');
+
+  const fn = (document.getElementById('full_name').value || '').trim();
+  const arRegex = /^[\u0621-\u064A\u0671\s]+$/;
+  if (!fn || !arRegex.test(fn)) {
+    showToast('الاسم يجب أن يكون باللغة العربية فقط (بدون أرقام أو حروف إنجليزية)', 'error');
+    return;
+  }
+  const parts = fn.split(/\s+/).filter(Boolean);
+  if (parts.length < 4) {
+    showToast('الاسم يجب أن يكون رباعياً على الأقل', 'error');
+    return;
+  }
+
   btn.disabled = true; sp.style.display = 'block'; bt.textContent = 'جارٍ التسجيل…';
 
   try {

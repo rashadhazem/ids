@@ -100,7 +100,13 @@ def validate_university_email(email: str) -> bool:
     return re.fullmatch(r"[^@\s]+@" + re.escape(UNIVERSITY_DOMAIN), email) is not None
 
 def validate_full_name(name: str) -> tuple[bool, str]:
-    if len(name.strip().split()) < 4:
+    name = (name or "").strip()
+    if not name:
+        return False, "يرجى إدخال الاسم"
+    if not re.fullmatch(r"^[\u0621-\u064A\u0671\s]+$", name):
+        return False, "الاسم يجب أن يكون باللغة العربية فقط (بدون أرقام أو حروف إنجليزية)"
+    parts = [p for p in name.split() if p]
+    if len(parts) < 4:
         return False, "الاسم يجب أن يكون رباعياً على الأقل"
     return True, ""
 
@@ -332,12 +338,16 @@ def auth_register():
 
         if not validate_university_email(email):
             error = f"يجب استخدام إيمبيل الجامعة (@{UNIVERSITY_DOMAIN})"
+        elif not full_name:
+            error = "يرجى إدخال الاسم"
+        elif not re.fullmatch(r"^[\u0621-\u064A\u0671\s]+$", full_name):
+            error = "الاسم يجب أن يكون باللغة العربية فقط (بدون أرقام أو حروف إنجليزية)"
+        elif len(full_name.split()) < 2:
+            error = "يرجى إدخال الاسم كاملاً (الاسم الثنائي أو الثلاثي على الأقل)"
         elif len(pw) < 8:
             error = "كلمة المرور يجب أن تكون 8 أحرف على الأقل"
         elif pw != pw2:
             error = "كلمتا المرور غير متطابقتين"
-        elif len(full_name.split()) < 2:
-            error = "يرجى إدخال الاسم الكامل"
         else:
             # Extract student_id from email prefix (e.g. AbdulRahman.2023006972@bua.edu.eg)
             sid = extract_student_id_from_email(email)
@@ -996,6 +1006,8 @@ def admin_create_user():
 
     if not full_name or len(full_name.split()) < 2:
         return jsonify(success=False, message="يرجى إدخال الاسم الكامل للمستخدم"), 400
+    if not re.fullmatch(r"^[\u0621-\u064A\u0671\s]+$", full_name):
+        return jsonify(success=False, message="الاسم يجب أن يكون باللغة العربية فقط"), 400
     if not validate_university_email(email):
         return jsonify(success=False, message=f"يجب استخدام بريد الجامعة (@{UNIVERSITY_DOMAIN})"), 400
     if role not in ROLES or role == "student":
