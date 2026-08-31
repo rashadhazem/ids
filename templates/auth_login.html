@@ -133,14 +133,16 @@ input:focus{
   font-size:.82rem;
   margin-bottom:14px;
   display:flex;
-  align-items:center;
-  gap:8px
+  align-items:flex-start;
+  gap:8px;
+  line-height:1.5;
 }
 .error-box svg{
   width:15px;
   height:15px;
   fill:currentColor;
-  flex-shrink:0
+  flex-shrink:0;
+  margin-top:2px;
 }
 .btn{
   width:100%;
@@ -205,7 +207,14 @@ footer a{
       <svg viewBox="0 0 24 24">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
       </svg>
-      {{ error }}
+      <div>
+        {{ error }}
+        {% if unverified_email or "تفعيل" in error %}
+        <div style="margin-top:6px">
+          <a href="{{ url_for('auth_resend_verification', email=unverified_email or '') }}" style="color:#c53030;font-weight:700;text-decoration:underline">إعادة إرسال رابط التفعيل الآن ←</a>
+        </div>
+        {% endif %}
+      </div>
     </div>
     {% endif %}
     <div class="domain-hint">
@@ -226,6 +235,7 @@ footer a{
     <div class="links">
       <a href="{{ url_for('auth_register') }}">إنشاء حساب جديد</a>
       <a href="{{ url_for('auth_forgot') }}">نسيت كلمة المرور؟</a>
+      <a href="{{ url_for('auth_resend_verification') }}">إعادة إرسال رابط التفعيل</a>
       <a href="{{ url_for('student_login') }}">دخول الطلاب</a>
     </div>
   </form>

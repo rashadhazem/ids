@@ -1,121 +1,139 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>نسيت كلمة المرور</title>
-        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
-        <style>
-            * {
-                box-sizing: border-box;
-                margin: 0;
-                padding: 0;
-            }
-            body {
-                font-family: 'Cairo', sans-serif;
-                background: linear-gradient(135deg, #0d1f3c, #1a3a6b 50%, #0d1f3c);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-            }
-            .card {
-                background: #fff;
-                border-radius: 18px;
-                width: 100%;
-                max-width: 400px;
-                overflow: hidden;
-                box-shadow: 0 16px 50px rgba(0, 0, 0, .3);
-            }
-            .top {
-                background: linear-gradient(135deg, #0d1f3c, #1a3a6b);
-                padding: 28px;
-                text-align: center;
-            }
-            .top h1 {
-                color: #fff;
-                font-size: 1.1rem;
-                font-weight: 900;
-            }
-            .top p {
-                color: rgba(255, 255, 255, .4);
-                font-size: .78rem;
-                margin-top: 4px;
-            }
-            form {
-                padding: 24px;
-            }
-            .field {
-                margin-bottom: 14px;
-            }
-            label {
-                font-size: .82rem;
-                font-weight: 600;
-                color: #1a2744;
-                display: block;
-                margin-bottom: 5px;
-            }
-            input {
-                width: 100%;
-                padding: 10px 13px;
-                border: 1.5px solid #dce3ef;
-                border-radius: 9px;
-                font-family: 'Cairo';
-                font-size: .875rem;
-                color: #1a2744;
-                background: #fafbfd;
-                outline: none;
-            }
-            input:focus {
-                border-color: #1a3a6b
-            }
-            .alert {
-                border-radius：8px;
-				padding：10px 13px;
-				font-size：.82rem;
-				margin-bottom：14px:
-				background：#f0fff4:
-				border：1px solid #9ae6b4:
-				color：#276749:
-			}
-			.btn {
-				width：100%;
-				padding：12px:
-				background：linear-gradient(135deg,#0d1f3c,#1a3a6b):
-				color：#fff:
-				border：none:
-				border-radius：9px:
-				font-size：.9rem:
-				font-weight：700:
-				font-family：'Cairo':
-				cursor：pointer:
-			}
-			.back {
-				display：block:
-				text-align：center:
-				margin-top：12px:
-				font-size：.78rem:
-				color：#6b7a99:
-				text-decoration：none:
-			}
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <div class="top">
-                <h1>استعادة كلمة المرور</h1>
-                    <p>سيُرسل رابط إعادة التعيين لبريدك</p>
-                    </div>
-                    <form method="POST">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        {% if msg %}
-                            <div class="alert">{{ msg }}</div>
-                        {% endif %}
-                        <div class="field">
-                            <label>البريد الإلكتروني</label>
-                            <input type="email" name="email" required placeholder="example@university.edu.eg">
-                        </div>
-<button type="submit" class="btn">إرسال رابط الاستعادة</button>
-<a href="{{ url_for('auth_login') }}" class="back">← العودة لتسجيل الدخول</a>
-</form></div></body></html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>نسيت كلمة المرور</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&family=Tajawal:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: linear-gradient(135deg, #0d1f3c, #1a3a6b 50%, #0d1f3c);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 18px;
+            width: 100%;
+            max-width: 400px;
+            overflow: hidden;
+            box-shadow: 0 16px 50px rgba(0, 0, 0, .3);
+        }
+        .top {
+            background: linear-gradient(135deg, #0d1f3c, #1a3a6b);
+            padding: 28px;
+            text-align: center;
+        }
+        .top h1 {
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 900;
+        }
+        .top p {
+            color: rgba(255, 255, 255, .5);
+            font-size: .78rem;
+            margin-top: 4px;
+            font-family: 'Tajawal';
+        }
+        form {
+            padding: 24px;
+        }
+        .field {
+            margin-bottom: 14px;
+        }
+        label {
+            font-size: .82rem;
+            font-weight: 600;
+            color: #1a2744;
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 10px 13px;
+            border: 1.5px solid #dce3ef;
+            border-radius: 9px;
+            font-family: 'Cairo';
+            font-size: .875rem;
+            color: #1a2744;
+            background: #fafbfd;
+            outline: none;
+        }
+        input:focus {
+            border-color: #1a3a6b;
+        }
+        .alert {
+            border-radius: 8px;
+            padding: 10px 13px;
+            font-size: .82rem;
+            margin-bottom: 14px;
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            color: #276749;
+            line-height: 1.5;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #0d1f3c, #1a3a6b);
+            color: #fff;
+            border: none;
+            border-radius: 9px;
+            font-size: .9rem;
+            font-weight: 700;
+            font-family: 'Cairo';
+            cursor: pointer;
+        }
+        .btn:hover {
+            opacity: .92;
+        }
+        .links {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 14px;
+            font-size: .78rem;
+            font-family: 'Tajawal';
+        }
+        .links a {
+            color: #6b7a99;
+            text-decoration: none;
+        }
+        .links a:hover {
+            color: #1a3a6b;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="top">
+            <h1>استعادة كلمة المرور</h1>
+            <p>سيُرسل رابط إعادة التعيين لبريدك الجامعي</p>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if msg %}
+                <div class="alert">{{ msg }}</div>
+            {% endif %}
+            <div class="field">
+                <label>البريد الإلكتروني</label>
+                <input type="email" name="email" required placeholder="example@university.edu.eg">
+            </div>
+            <button type="submit" class="btn">إرسال رابط الاستعادة</button>
+            <div class="links">
+                <a href="{{ url_for('auth_login') }}">← العودة لتسجيل الدخول</a>
+                <a href="{{ url_for('auth_resend_verification') }}">إعادة إرسال رابط التفعيل</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

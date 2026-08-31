@@ -31,8 +31,8 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
   padding:8px 12px;margin-bottom:16px;font-size:.78rem;color:#6b7a99;font-family:'Tajawal'}
 .domain-hint svg{width:14px;height:14px;fill:#c8941a;flex-shrink:0}
 .error-box{background:#fff5f5;border:1px solid #feb2b2;color:#c53030;border-radius:8px;
-  padding:10px 13px;font-size:.82rem;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.error-box svg{width:15px;height:15px;fill:currentColor;flex-shrink:0}
+  padding:10px 13px;font-size:.82rem;margin-bottom:14px;display:flex;align-items:flex-start;gap:8px;line-height:1.5;}
+.error-box svg{width:15px;height:15px;fill:currentColor;flex-shrink:0;margin-top:2px;}
 .btn{width:100%;padding:13px;background:linear-gradient(135deg,#0d1f3c,#1a3a6b);
   color:#fff;border:none;border-radius:10px;font-size:.95rem;font-weight:700;
   font-family:'Cairo';cursor:pointer;transition:opacity .2s}
@@ -57,7 +57,14 @@ footer a{color:#e8b84b;text-decoration:none}
     {% if error %}
     <div class="error-box" style="margin:0 0 14px">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-      {{ error }}
+      <div>
+        {{ error }}
+        {% if unverified_email or "تفعيل" in error %}
+        <div style="margin-top:6px">
+          <a href="{{ url_for('auth_resend_verification', email=unverified_email or '') }}" style="color:#c53030;font-weight:700;text-decoration:underline">إعادة إرسال رابط التفعيل الآن ←</a>
+        </div>
+        {% endif %}
+      </div>
     </div>
     {% endif %}
     <div class="domain-hint">
@@ -76,6 +83,7 @@ footer a{color:#e8b84b;text-decoration:none}
     <div class="links">
       <a href="{{ url_for('auth_register') }}">إنشاء حساب جديد</a>
       <a href="{{ url_for('auth_forgot') }}">نسيت كلمة المرور؟</a>
+      <a href="{{ url_for('auth_resend_verification') }}">إعادة إرسال رابط التفعيل</a>
       <a href="{{ url_for('auth_login') }}">دخول الموظفين والإداريين</a>
     </div>
   </form>

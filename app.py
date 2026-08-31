@@ -21,7 +21,7 @@ import tempfile
 # ── bootstrap ──────────────────────────────────────────────────────────────
 load_dotenv()
 
-from database import get_db, init_db, COLLEGES, ROLES, log_action, ph, USE_PG
+from database import get_db, init_db, COLLEGES, ROLES, log_action, ph, is_use_pg
 from image_processor import (detect_faces, apply_edits, face_detected, save_image,
                               archive_old_image, TARGET_W, TARGET_H, validate_single_person)
 
@@ -140,7 +140,7 @@ def send_email(to: str, subject: str, html: str):
 
 def _row_to_dict(row) -> dict:
     if row is None: return {}
-    if USE_PG: return dict(row)
+    if is_use_pg(): return dict(row)
     return dict(zip(row.keys(), row))
 
 # ── auth decorators ────────────────────────────────────────────────────────
@@ -227,6 +227,7 @@ def auth_login():
     if session.get("user_id"):
         return redirect(url_for("dashboard"))
     error = None
+    unverified_email = None
     if request.method == "POST":
         email = request.form.get("email","").strip().lower()
         pw    = request.form.get("password","")
@@ -239,6 +240,7 @@ def auth_login():
             error = "الحساب موقوف. تواصل مع مدير النظام"
         elif not u.get("email_verified"):
             error = "يرجى تفعيل بريدك الإلكتروني أولاً"
+            unverified_email = email
         elif not check_pw(pw, u["password_hash"]):
             error = "كلمة المرور غير صحيحة"
         else:
@@ -263,6 +265,7 @@ def auth_login():
                 return redirect(url_for("student_self_register"))
             return redirect(url_for("dashboard"))
     return render_template("auth_login.html", error=error,
+                           unverified_email=unverified_email,
                            domain=UNIVERSITY_DOMAIN)
 
 
@@ -273,6 +276,7 @@ def student_login():
     if session.get("user_id"):
         return redirect(url_for("dashboard"))
     error = None
+    unverified_email = None
     if request.method == "POST":
         email = request.form.get("email","").strip().lower()
         pw    = request.form.get("password","")
@@ -287,6 +291,7 @@ def student_login():
             error = "الحساب موقوف. تواصل مع مدير النظام"
         elif not u.get("email_verified"):
             error = "يرجى تفعيل بريدك الإلكتروني أولاً"
+            unverified_email = email
         elif not check_pw(pw, u["password_hash"]):
             error = "كلمة المرور غير صحيحة"
         else:
@@ -309,6 +314,7 @@ def student_login():
             # Not registered yet → self-registration page
             return redirect(url_for("student_self_register"))
     return render_template("student_login.html", error=error,
+                           unverified_email=unverified_email,
                            domain=UNIVERSITY_DOMAIN)
 
 
@@ -354,6 +360,7 @@ def auth_register():
                 send_email(email, "تفعيل حساب نظام التسجيل", _email_verify_html(full_name, link))
                 return render_template("auth_register.html",
                     success="تم إنشاء حسابك! تحقق من بريدك لتفعيل الحساب.",
+                    registered_email=email,
                     domain=UNIVERSITY_DOMAIN)
     return render_template("auth_register.html", error=error, domain=UNIVERSITY_DOMAIN)
 
@@ -367,7 +374,7 @@ def auth_verify(token):
         db.close()
         return render_template("auth_message.html",
             title="رابط غير صالح", msg="رابط التفعيل منتهي أو غير صحيح.", type="error")
-    if USE_PG:
+    if is_use_pg():
         cur.execute("UPDATE users SET email_verified=TRUE, verify_token=NULL WHERE id=%s", (u["id"],))
     else:
         cur.execute("UPDATE users SET email_verified=1, verify_token=NULL WHERE id=?", (u["id"],))
@@ -375,6 +382,64 @@ def auth_verify(token):
     log_action(u["id"], "EMAIL_VERIFIED", ip=request.remote_addr)
     return render_template("auth_message.html",
         title="تم التفعيل ✓", msg="تم تفعيل حسابك بنجاح. يمكنك الآن تسجيل الدخول.", type="success")
+
+
+@app.route("/auth/resend-verification", methods=["GET", "POST"])
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_RESEND", "15 per hour"))
+def auth_resend_verification():
+    """Resend email verification activation link."""
+    msg = None
+    msg_type = "info"
+    email_val = request.args.get("email", "").strip().lower()
+
+    if request.method == "POST":
+        email_val = request.form.get("email", "").strip().lower()
+        if not email_val:
+            msg = "يرجى إدخال البريد الإلكتروني"
+            msg_type = "error"
+        elif not validate_university_email(email_val):
+            msg = f"يجب استخدام بريد الجامعة (@{UNIVERSITY_DOMAIN})"
+            msg_type = "error"
+        else:
+            db  = get_db()
+            cur = db.cursor()
+            cur.execute(f"SELECT * FROM users WHERE email={ph()}", (email_val,))
+            u = _row_to_dict(cur.fetchone())
+
+            if u:
+                if u.get("email_verified"):
+                    msg = "هذا الحساب مفعّل بالفعل! يمكنك تسجيل الدخول مباشرة."
+                    msg_type = "success"
+                elif not u.get("is_active"):
+                    msg = "هذا الحساب موقوف. يرجى مراجعة إدارة النظام."
+                    msg_type = "error"
+                else:
+                    token = secrets.token_urlsafe(32)
+                    cur.execute(
+                        f"UPDATE users SET verify_token={ph()} WHERE id={ph()}",
+                        (token, u["id"])
+                    )
+                    db.commit()
+                    link = url_for("auth_verify", token=token, _external=True)
+                    send_email(
+                        email_val,
+                        "تفعيل حساب نظام التسجيل",
+                        _email_verify_html(u["full_name"], link)
+                    )
+                    msg = "تم إرسال رابط التفعيل الجديد بنجاح إلى بريدك الجامعي! يرجى التحقق من صندوق الوارد (أو مجلد Spam)."
+                    msg_type = "success"
+            else:
+                msg = "إذا كان هذا البريد مسجلاً لدينا وغير مفعّل، فقد تم إرسال رابط التفعيل إليه."
+                msg_type = "info"
+            db.close()
+
+    return render_template(
+        "auth_resend.html",
+        msg=msg,
+        msg_type=msg_type,
+        email_val=email_val,
+        domain=UNIVERSITY_DOMAIN
+    )
 
 
 @app.route("/auth/forgot", methods=["GET","POST"])
@@ -803,7 +868,7 @@ def admin_students():
 
     conditions, params = [], []
     if q:
-        if USE_PG:
+        if is_use_pg():
             conditions.append("(student_id ILIKE %s OR full_name ILIKE %s)")
         else:
             conditions.append("(student_id LIKE ? OR full_name LIKE ?)")
@@ -819,7 +884,7 @@ def admin_students():
     cur.execute(f"SELECT COUNT(*) AS c FROM students {where}", params)
     total  = (_row_to_dict(cur.fetchone()) or {}).get("c", 0)
     offset = (page-1)*per_page
-    if USE_PG:
+    if is_use_pg():
         cur.execute(f"SELECT * FROM students {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
                     params+[per_page, offset])
     else:
@@ -943,7 +1008,7 @@ def admin_create_user():
     try:
         cur.execute(
             f"INSERT INTO users (email,password_hash,full_name,role,college,email_verified,is_active) VALUES ({','.join([ph()]*7)})",
-            (email, hashed, full_name, role, college, 1 if not USE_PG else True, 1 if not USE_PG else True)
+            (email, hashed, full_name, role, college, 1 if not is_use_pg() else True, 1 if not is_use_pg() else True)
         )
         db.commit()
     except Exception as e:
@@ -1008,7 +1073,7 @@ def admin_toggle_user(uid):
     cur.execute(f"SELECT is_active,email FROM users WHERE id={ph()}", (uid,))
     u = _row_to_dict(cur.fetchone())
     if not u: db.close(); return jsonify(success=False), 404
-    new_val = (not u["is_active"]) if USE_PG else (0 if u["is_active"] else 1)
+    new_val = (not u["is_active"]) if is_use_pg() else (0 if u["is_active"] else 1)
     cur.execute(f"UPDATE users SET is_active={ph()} WHERE id={ph()}", (new_val, uid))
     db.commit(); db.close()
     log_action(session.get("user_id"), "TOGGLE_USER", target=u["email"], ip=request.remote_addr)
@@ -1028,7 +1093,7 @@ def admin_audit():
     db = get_db(); cur = db.cursor()
     cur.execute("SELECT COUNT(*) AS c FROM audit_log")
     total = (_row_to_dict(cur.fetchone()) or {}).get("c",0)
-    if USE_PG:
+    if is_use_pg():
         cur.execute("""SELECT a.*,u.full_name,u.email FROM audit_log a
                        LEFT JOIN users u ON a.user_id=u.id
                        ORDER BY a.created_at DESC LIMIT %s OFFSET %s""", (per_page,offset))
@@ -1070,7 +1135,7 @@ def api_students():
     page     = max(int(request.args.get("page",1)),1)
     per_page = 20; offset=(page-1)*per_page
     db = get_db(); cur = db.cursor()
-    if USE_PG:
+    if is_use_pg():
         cur.execute("SELECT student_id,full_name,year,college,image_path,created_at FROM students ORDER BY created_at DESC LIMIT %s OFFSET %s", (per_page,offset))
     else:
         cur.execute("SELECT student_id,full_name,year,college,image_path,created_at FROM students ORDER BY created_at DESC LIMIT ? OFFSET ?", (per_page,offset))
@@ -1100,9 +1165,6 @@ def api_student(student_id):
 @role_required("superadmin","admin","staff")
 def admin_panel():
     db=get_db(); cur=db.cursor()
-    yrs=[_row_to_dict(r)["year"]    for r in cur.execute("SELECT DISTINCT year FROM students ORDER BY year DESC").fetchall()] if not USE_PG else \
-        [r["year"] for r in (cur.execute("SELECT DISTINCT year FROM students ORDER BY year DESC") or [cur.fetchall()])[0]] if False else []
-    # simpler approach
     cur.execute("SELECT DISTINCT year FROM students ORDER BY year DESC")
     yrs=[_row_to_dict(r)["year"] for r in cur.fetchall()]
     db.close()

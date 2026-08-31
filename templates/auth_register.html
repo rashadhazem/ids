@@ -53,16 +53,31 @@ label{font-size:.82rem;font-weight:600;color:#1a2744;display:block;margin-bottom
 input{width:100%;padding:10px 13px;border:1.5px solid #dce3ef;border-radius:10px;
   font-family:'Cairo';font-size:.875rem;color:#1a2744;background:#fafbfd;outline:none;transition:border-color .2s}
 input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);background:#fff}
-.alert{border-radius:8px;padding:10px 13px;font-size:.82rem;margin-bottom:14px;display:flex;align-items:flex-start;gap:8px}
+.alert{border-radius:8px;padding:10px 13px;font-size:.82rem;margin-bottom:14px;display:flex;align-items:flex-start;gap:8px;line-height:1.5;}
 .alert-error{background:#fff5f5;border:1px solid #feb2b2;color:#c53030}
 .alert-success{background:#f0fff4;border:1px solid #9ae6b4;color:#276749}
-.alert svg{width:15px;height:15px;fill:currentColor;flex-shrink:0;margin-top:1px}
+.alert svg{width:15px;height:15px;fill:currentColor;flex-shrink:0;margin-top:2px}
 .hint{font-size:.75rem;color:#6b7a99;margin-top:3px;font-family:'Tajawal'}
 .btn{width:100%;padding:12px;background:linear-gradient(135deg,#0d1f3c,#1a3a6b);
   color:#fff;border:none;border-radius:10px;font-size:.9rem;font-weight:700;font-family:'Cairo';cursor:pointer}
 .btn:hover{opacity:.92}
-.back{display:block;text-align:center;margin-top:12px;font-size:.78rem;color:#6b7a99;text-decoration:none;font-family:'Tajawal'}
-.back:hover{color:#1a3a6b}
+.links{
+  display:flex;
+  justify-content:space-between;
+  margin-top:14px;
+  flex-wrap:wrap;
+  gap:6px
+}
+.links a{
+  font-size:.78rem;
+  color:#6b7a99;
+  text-decoration:none;
+  font-family:'Tajawal'
+}
+.links a:hover{
+  color:#1a3a6b;
+  text-decoration:underline;
+}
 </style>
 </head>
 <body>
@@ -76,13 +91,20 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
     {% if error %}
     <div class="alert alert-error">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-      {{ error }}
+      <div>{{ error }}</div>
     </div>
     {% endif %}
     {% if success %}
     <div class="alert alert-success">
       <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-      {{ success }} <a href="{{ url_for('student_login') }}" style="color:#1a3a6b;text-decoration:underline">سجّل الدخول من هنا</a>
+      <div>
+        {{ success }}
+        <div style="margin-top:6px">
+          <a href="{{ url_for('student_login') }}" style="color:#1a3a6b;font-weight:700;text-decoration:underline">سجّل الدخول من هنا</a>
+          &nbsp;|&nbsp;
+          <a href="{{ url_for('auth_resend_verification', email=registered_email or '') }}" style="color:#276749;text-decoration:underline">لم يصلك البريد؟ إعادة الإرسال</a>
+        </div>
+      </div>
     </div>
     {% endif %}
     <div class="field">
@@ -103,7 +125,10 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
       <input type="password" name="password2" required placeholder="أعد كتابة كلمة المرور">
     </div>
     <button type="submit" class="btn">إنشاء الحساب</button>
-    <a href="{{ url_for('auth_login') }}" class="back">لديك حساب بالفعل؟ سجّل الدخول</a>
+    <div class="links">
+      <a href="{{ url_for('auth_login') }}">لديك حساب بالفعل؟ سجّل الدخول</a>
+      <a href="{{ url_for('auth_resend_verification') }}">إعادة إرسال رابط التفعيل</a>
+    </div>
   </form>
 </div>
 </body>
