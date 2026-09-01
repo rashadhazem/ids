@@ -47,14 +47,20 @@ app.config["JWT_SECRET_KEY"]           = jwt_secret_env
 
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=8)
 app.config["MAX_CONTENT_LENGTH"]       = int(os.getenv("MAX_CONTENT_LENGTH", 5*1024*1024))
+mail_port = int(os.getenv("MAIL_PORT", 587))
+use_ssl_env = os.getenv("MAIL_USE_SSL")
+use_tls_env = os.getenv("MAIL_USE_TLS")
+
 app.config["MAIL_SERVER"]              = os.getenv("MAIL_SERVER",  "smtp.gmail.com")
-app.config["MAIL_PORT"]                = int(os.getenv("MAIL_PORT", 587))
-app.config["MAIL_USE_TLS"]             = os.getenv("MAIL_USE_TLS","true").lower()=="true"
+app.config["MAIL_PORT"]                = mail_port
+app.config["MAIL_USE_SSL"]             = use_ssl_env.lower() == "true" if use_ssl_env is not None else (mail_port == 465)
+app.config["MAIL_USE_TLS"]             = use_tls_env.lower() == "true" if use_tls_env is not None else (mail_port == 587 and not (use_ssl_env and use_ssl_env.lower() == "true"))
 
 # SMTP Credentials from Environment Variables (V-001)
 app.config["MAIL_USERNAME"]            = os.getenv("MAIL_USERNAME")
-app.config["MAIL_PASSWORD"]            = os.getenv("MAIL_PASSWORD")
-app.config["MAIL_DEFAULT_SENDER"]      = os.getenv("MAIL_DEFAULT_SENDER")
+mail_pw = os.getenv("MAIL_PASSWORD", "")
+app.config["MAIL_PASSWORD"]            = mail_pw.replace(" ", "") if mail_pw else None
+app.config["MAIL_DEFAULT_SENDER"]      = os.getenv("MAIL_DEFAULT_SENDER") or os.getenv("MAIL_USERNAME")
 
 UPLOAD_FOLDER        = os.path.join(app.root_path, "static", "uploads")
 STATIC_ROOT          = os.path.join(app.root_path, "static")
@@ -209,16 +215,23 @@ def _email_reset_html(name, link):
   </div>
 </div>"""
 
-def _email_registered_html(name, student_id, card_link):
+def _email_registered_html(name, student_id, login_email, password, card_link):
     return f"""
 <div dir="rtl" style="font-family:Cairo,Arial;max-width:520px;margin:auto">
   <div style="background:#0d1f3c;padding:28px;border-radius:14px 14px 0 0;text-align:center">
-    <h2 style="color:#e8b84b;margin:0">🎓 تم تسجيلك بنجاح</h2>
+    <h2 style="color:#e8b84b;margin:0">&#127891; تم تسجيلك بنجاح</h2>
   </div>
   <div style="background:#f0f4f9;padding:28px;border-radius:0 0 14px 14px">
     <p>أهلاً <strong>{name}</strong>،</p>
     <p>تم تسجيلك في النظام بنجاح. رقمك الجامعي هو:</p>
     <div style="background:#0d1f3c;color:#e8b84b;font-family:monospace;font-size:1.4rem;font-weight:700;padding:14px;border-radius:8px;text-align:center;letter-spacing:3px;margin:16px 0">{student_id}</div>
+
+    <div style="background:#fff;border:1px solid #dce3ef;border-radius:10px;padding:16px;margin:14px 0">
+      <p style="font-weight:700;color:#1a2744;margin-bottom:8px">بيانات تسجيل الدخول:</p>
+      <p style="font-size:.88rem;color:#444;margin-bottom:5px">البريد الجامعي / اسم المستخدم: <strong style="direction:ltr;display:inline-block">{login_email}</strong></p>
+      <p style="font-size:.88rem;color:#444">كلمة المرور (كود الطالب): <strong style="font-family:monospace;letter-spacing:1px">{password}</strong></p>
+    </div>
+
     <a href="{card_link}" style="display:inline-block;background:#1a3a6b;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">عرض بطاقة الهوية</a>
   </div>
 </div>"""
@@ -238,7 +251,7 @@ def auth_login():
         email = request.form.get("email","").strip().lower()
         pw    = request.form.get("password","")
         db    = get_db(); cur = db.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email={ph()}", (email,))
+        cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (email, email))
         u = _row_to_dict(cur.fetchone()); db.close()
         if not u:
             error = "البريد الإلكتروني غير مسجل"
@@ -287,7 +300,7 @@ def student_login():
         email = request.form.get("email","").strip().lower()
         pw    = request.form.get("password","")
         db    = get_db(); cur = db.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email={ph()}", (email,))
+        cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (email, email))
         u = _row_to_dict(cur.fetchone()); db.close()
         if not u:
             error = "البريد الإلكتروني غير مسجل"
@@ -732,6 +745,28 @@ def register():
                  student_email or None, result["path"], uid)
             )
             db.commit()
+
+            # ── Create or update student user account so student can log in with password = student_id ──
+            student_login_email = (student_email if (student_email and validate_university_email(student_email))
+                                   else f"{student_id}@{UNIVERSITY_DOMAIN}")
+            hashed_pw = hash_pw(student_id)
+            cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, student_id))
+            existing_user = cur.fetchone()
+            if not existing_user:
+                cur.execute(
+                    f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
+                    (student_login_email, hashed_pw, full_name, "student",
+                     college, student_id, True if is_use_pg() else 1, True if is_use_pg() else 1)
+                )
+                db.commit()
+            else:
+                user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
+                cur.execute(
+                    f"UPDATE users SET password_hash={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                    (hashed_pw, student_id, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                )
+                db.commit()
+
             log_action(uid, "REGISTER_STUDENT", target=student_id,
                        detail=full_name, ip=request.remote_addr)
         except Exception as e:
@@ -750,7 +785,7 @@ def register():
         if student_email:
             card_link = url_for("student_card", student_id=student_id, _external=True)
             send_email(student_email, "تم تسجيلك في النظام الجامعي",
-                       _email_registered_html(full_name, student_id, card_link))
+                       _email_registered_html(full_name, student_id, student_login_email, student_id, card_link))
 
         return jsonify(success=True,
             message=f"✅ تم تسجيل {full_name} بنجاح! الرقم: {student_id}",
@@ -1243,6 +1278,13 @@ def bulk_import():
     def find_col(row_dict, aliases):
         for a in aliases:
             if a in row_dict: return row_dict[a]
+        # Case-insensitive / partial match for composite headers like "student_id / رقم الطالب"
+        for k, v in row_dict.items():
+            k_clean = str(k).strip().lower()
+            for a in aliases:
+                a_clean = a.strip().lower()
+                if a_clean == k_clean or a_clean in k_clean:
+                    return v
         return ""
 
     results = {"created": 0, "skipped": 0, "errors": [], "preview": []}
@@ -1327,15 +1369,23 @@ def bulk_import():
             # ── Create student user account ──
             # Email = student_id@domain  (e.g. 2024001001@university.edu.eg)
             student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
-            temp_pw             = secrets.token_urlsafe(10)
+            temp_pw             = sid
             hashed_pw           = hash_pw(temp_pw)
 
-            cur.execute(f"SELECT id FROM users WHERE email={ph()}", (student_login_email,))
-            if not cur.fetchone():
+            cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, sid))
+            existing_user = cur.fetchone()
+            if not existing_user:
                 cur.execute(
                     f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
                     (student_login_email, hashed_pw, full_name, "student",
-                     college, sid, 1, 1)   # pre-verified, active
+                     college, sid, True if is_use_pg() else 1, True if is_use_pg() else 1)   # pre-verified, active
+                )
+                db.commit()
+            else:
+                user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
+                cur.execute(
+                    f"UPDATE users SET password_hash={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                    (hashed_pw, sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
                 )
                 db.commit()
 
@@ -1579,6 +1629,90 @@ def student_self_register_post():
     except Exception:
         app.logger.exception("Student self-register error")
         return jsonify(success=False, message="حدث خطأ داخلي"), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# GOOGLE DRIVE OAUTH GATEWAY
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/gdrive/auth")
+@login_required
+def gdrive_auth():
+    if session.get("role") != "superadmin":
+        abort(403)
+    
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    if not client_id:
+        return "Error: GOOGLE_CLIENT_ID is not configured in .env", 400
+        
+    redirect_uri = f"{request.scheme}://{request.host}/admin/gdrive/callback"
+    
+    auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={client_id}"
+        f"&response_type=code"
+        f"&redirect_uri={redirect_uri}"
+        f"&scope=https://www.googleapis.com/auth/drive"
+        f"&access_type=offline"
+        f"&prompt=consent"
+    )
+    return redirect(auth_url)
+
+
+@app.route("/admin/gdrive/callback")
+@login_required
+def gdrive_callback():
+    if session.get("role") != "superadmin":
+        abort(403)
+        
+    code = request.args.get("code")
+    if not code:
+        err = request.args.get("error")
+        return f"Google OAuth Error: {err or 'Missing authorization code'}", 400
+        
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    
+    if not client_id or not client_secret:
+        return "Error: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is not configured in .env", 400
+        
+    redirect_uri = f"{request.scheme}://{request.host}/admin/gdrive/callback"
+    token_url = "https://oauth2.googleapis.com/token"
+    
+    data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    
+    try:
+        import requests
+        res = requests.post(token_url, data=data, timeout=15)
+        if res.status_code == 200:
+            tokens = res.json()
+            refresh_token = tokens.get("refresh_token")
+            
+            html = f"""
+            <div dir="rtl" style="font-family:Cairo,Arial,sans-serif;max-width:600px;margin:50px auto;padding:30px;border:1px solid #dce3ef;border-radius:14px;background:#f0f4f9;box-shadow:0 8px 30px rgba(0,0,0,0.05)">
+              <h1 style="color:#1a73e8;margin-top:0">🎉 تم الاتصال بـ Google Drive بنجاح!</h1>
+              <p style="color:#4a5568;line-height:1.6">تم الحصول على رمز التحديث (Refresh Token) بنجاح. يرجى نسخه ووضعه في ملف <strong>.env</strong> الخاص بالتطبيق:</p>
+              
+              <div style="background:#2d3748;color:#fff;padding:16px;border-radius:8px;font-family:monospace;font-size:0.9rem;word-break:break-all;margin:20px 0;user-select:all" title="انقر لتحديد الكل">
+                GOOGLE_REFRESH_TOKEN={refresh_token}
+              </div>
+              
+              <p style="color:#e53e3e;font-size:0.85rem;font-weight:bold">* تنبيه: هذا الرمز سري للغاية ويسمح بالوصول لملفاتك، لا تشاركه مع أي شخص.</p>
+              <p style="color:#718096;font-size:0.8rem">بعد تعديل ملف .env، أعد تشغيل السيرفر لتفعيل مزامنة الصور تلقائياً.</p>
+              <a href="/" style="display:inline-block;margin-top:20px;padding:10px 20px;background:#1a73e8;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">الذهاب للوحة التحكم</a>
+            </div>
+            """
+            return html
+        else:
+            return f"Failed to obtain token from Google: {res.text}", 400
+    except Exception as e:
+        return f"Connection error: {e}", 500
 
 
 # ══════════════════════════════════════════════════════════════════════════

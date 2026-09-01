@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from onedrive_helper import upload_to_onedrive, archive_in_onedrive
+from gdrive_helper import upload_to_gdrive, archive_in_gdrive, is_gdrive_configured
 
 try:
     import cloudinary
@@ -332,11 +332,12 @@ def save_image(
     if not is_valid:
         raise ValueError(msg)
 
-    # Mirror copy backup to Microsoft OneDrive if enabled
+    # Mirror copy backup to Google Drive if enabled
     try:
-        upload_to_onedrive(image_bytes, year, college, f"{student_id}.jpg")
+        if is_gdrive_configured():
+            upload_to_gdrive(image_bytes, year, college, f"{student_id}.jpg")
     except Exception as e:
-        print(f"[OneDrive] Failed to mirror: {e}")
+        print(f"[GDrive] Failed to mirror: {e}")
 
     if _CLD:
         col_slug = _college_folder(college)
@@ -421,15 +422,16 @@ def archive_old_image(
     if not old_rel_path:
         return None
 
-    # Mirror archive to OneDrive if configured
+    # Mirror archive to Google Drive if configured
     try:
-        year, college = _extract_year_and_college(old_rel_path)
-        if year and college:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            old_filename = f"{student_id}_old_{ts}.jpg"
-            archive_in_onedrive(student_id, year, college, old_filename)
+        if is_gdrive_configured():
+            year, college = _extract_year_and_college(old_rel_path)
+            if year and college:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                old_filename = f"{student_id}_old_{ts}.jpg"
+                archive_in_gdrive(student_id, year, college, old_filename)
     except Exception as e:
-        print(f"[OneDrive] Failed to archive: {e}")
+        print(f"[GDrive] Failed to archive: {e}")
 
     if old_rel_path.startswith("http"):
         # Cloudinary archiving: rename/move the old photo on Cloudinary to old/ directory
