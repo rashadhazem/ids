@@ -151,6 +151,18 @@ input:focus,select:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,10
   color:#0d1f3c;border:none;border-radius:9px;font-family:'Cairo';
   font-size:.875rem;font-weight:900;cursor:pointer}
 
+/* Warning/Notice Box */
+.notice-box{background:rgba(139,92,246,.08);border:1.5px solid rgba(139,92,246,.25);
+  border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start}
+.notice-box-icon{width:32px;height:32px;background:rgba(139,92,246,.15);border-radius:9px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.notice-box-icon svg{width:18px;height:18px;fill:#8b5cf6}
+.notice-box-content{flex:1}
+.notice-box-title{font-size:.82rem;font-weight:700;color:#1a2744;margin-bottom:6px}
+.notice-box-text{font-size:.78rem;color:#6b7a99;line-height:1.45;font-family:'Tajawal'}
+.notice-box-list{margin-top:8px;padding-left:20px}
+.notice-box-list li{font-size:.75rem;color:#6b7a99;margin-bottom:4px;font-family:'Tajawal';line-height:1.4}
+
 /* Toast */
 #toast{position:fixed;top:20px;left:50%;
   transform:translateX(-50%) translateY(-120px);z-index:999;
@@ -262,6 +274,29 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
 
       <!-- Photo -->
       <div class="step-label">الصورة الشخصية</div>
+
+      <!-- Photo Requirements Notice -->
+      <div class="notice-box">
+        <div class="notice-box-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        </div>
+        <div class="notice-box-content">
+          <div class="notice-box-title">متطلبات الصورة الشخصية</div>
+          <div class="notice-box-text">
+            يجب أن تكون صورتك واضحة وعالية الجودة لضمان قبول التسجيل. الصورة المرفوضة ستؤخر عملية القيد.
+          </div>
+          <ul class="notice-box-list">
+            <li>✓ صورة شخصية واضحة وعالية الجودة</li>
+            <li>✓ الوجه مرئي بالكامل وبوضوح</li>
+            <li>✓ إضاءة جيدة وخلفية مناسبة</li>
+            <li>✗ لا تستخدم سيلفي أو صور من زوايا غير مناسبة</li>
+            <li>✗ لا تستخدم صور وجه غير واضح أو مظلم أو بعيد جداً</li>
+            <li>✗ لا تستخدم صور يكون فيها الوجه مغطى جزئياً أو غير واضح</li>
+            <li>✗ لا تستخدم صور تحتوي على أشخاص متعددين</li>
+          </ul>
+        </div>
+      </div>
+
       <div class="upload-zone" id="upz">
         <input type="file" name="image" id="img-inp" accept=".jpg,.jpeg">
         <p style="font-size:1.8rem;margin-bottom:7px">📷</p>

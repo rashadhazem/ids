@@ -354,6 +354,56 @@
   }
   footer a { color: var(--gold2); text-decoration: none; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Disclaimer Box ── */
+  .disclaimer-box {
+    position: relative; z-index: 1;
+    width: 380px; max-width: 100%;
+    background: linear-gradient(155deg, rgba(220,74,74,.12) 0%, rgba(220,74,74,.06) 100%);
+    border: 1.5px solid rgba(220,74,74,.35);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-top: 24px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    animation: cardIn .7s .3s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  .disclaimer-icon {
+    width: 36px; height: 36px;
+    background: rgba(220,74,74,.15);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .disclaimer-icon svg {
+    width: 20px; height: 20px;
+    fill: #dc4a4a;
+  }
+  .disclaimer-content {
+    flex: 1;
+  }
+  .disclaimer-title {
+    font-size: .88rem; font-weight: 700;
+    color: #dc4a4a;
+    margin-bottom: 8px;
+  }
+  .disclaimer-text {
+    font-size: .78rem; color: rgba(255,255,255,.7);
+    line-height: 1.5;
+    font-family: 'Tajawal';
+    margin-bottom: 8px;
+  }
+  .disclaimer-list {
+    font-size: .75rem; color: rgba(255,255,255,.65);
+    line-height: 1.5;
+    font-family: 'Tajawal';
+    padding-left: 18px;
+  }
+  .disclaimer-list li {
+    margin-bottom: 4px;
+  }
+
 </style>
 </head>
 <body>
@@ -436,6 +486,27 @@
     <div></div>
     <a class="logout-btn" href="{{ url_for('student_login') }}">تسجيل الدخول</a>
     {% endif %}
+  </div>
+</div>
+
+<!-- IMPORTANT DISCLAIMER -->
+<div class="disclaimer-box">
+  <div class="disclaimer-icon">
+    <svg viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+  </div>
+  <div class="disclaimer-content">
+    <div class="disclaimer-title">⚠️ تنبيه مهم: هذه ليست وثيقة هوية رسمية</div>
+    <div class="disclaimer-text">
+      <strong>هذه البطاقة هي عرض رقمي فقط لمعلومات الطالب والصورة</strong>، وليست وثيقة هوية رسمية أو معترف بها.
+    </div>
+    <ul class="disclaimer-list">
+      <li>✗ هذه البطاقة <strong>ليست</strong> وثيقة هوية رسمية</li>
+      <li>✗ لا يمكنها أن تحل محل أي وثيقة هوية رسمية</li>
+      <li>✗ يجب عدم تقديمها لأي جهة حكومية أو تعليمية أو إدارية</li>
+      <li>✗ لن تقبلها أي منظمة كوثيقة هوية رسمية</li>
+      <li>✓ الغرض الوحيد منها: عرض بيانات الطالب والتحقق من صحة الصورة</li>
+      <li>✓ إذا كانت صورتك غير واضحة أو غير صحيحة، يمكنك تحديثها من هنا</li>
+    </ul>
   </div>
 </div>
 
