@@ -16,5 +16,4 @@ Flask-WTF==1.2.1
 google-api-python-client>=2.100.0
 google-auth>=2.20.0
 google-auth-oauthlib>=1.0.0
-google-auth-httplib2>=0.2.0
-
+waitress==3.0.2

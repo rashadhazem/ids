@@ -89,9 +89,11 @@ def add_security_headers(response):
 
 mail    = Mail(app)
 jwt     = JWTManager(app)
+# Specific sensitive routes (login, register, reset pw) are protected by explicit @limiter.limit
+# Global default is kept open so thousands of concurrent students viewing pages are never blocked
 limiter = Limiter(
     key_func=get_remote_address, app=app,
-    default_limits=["300 per day", "80 per hour"],
+    default_limits=[],
     storage_uri="memory://",
 )
 
@@ -241,7 +243,7 @@ def _email_registered_html(name, student_id, login_email, password, card_link):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.route("/auth/login", methods=["GET","POST"])
-@limiter.limit(lambda: os.getenv("LIMIT_AUTH_LOGIN", "30 per hour"))
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_LOGIN", "500 per hour"), methods=["POST"])
 def auth_login():
     if session.get("user_id"):
         return redirect(url_for("dashboard"))
@@ -289,7 +291,7 @@ def auth_login():
 
 
 @app.route("/student/login", methods=["GET","POST"])
-@limiter.limit(lambda: os.getenv("LIMIT_STUDENT_LOGIN", "30 per hour"))
+@limiter.limit(lambda: os.getenv("LIMIT_STUDENT_LOGIN", "3000 per hour"), methods=["POST"])
 def student_login():
     """Dedicated login page for students."""
     if session.get("user_id"):
@@ -592,11 +594,11 @@ def dashboard():
 
     db  = get_db(); cur = db.cursor()
     cur.execute("SELECT COUNT(*) AS c FROM students")
-    total = (_row_to_dict(cur.fetchone()) or {}).get("c", 0)
+    total = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
     cur.execute("SELECT COUNT(DISTINCT year) AS c FROM students")
-    years = (_row_to_dict(cur.fetchone()) or {}).get("c", 0)
+    years = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
     cur.execute("SELECT COUNT(DISTINCT college) AS c FROM students")
-    colleges_n = (_row_to_dict(cur.fetchone()) or {}).get("c", 0)
+    colleges_n = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
     # recent audit
     cur.execute("""SELECT a.action, a.target, a.created_at, u.full_name
                    FROM audit_log a LEFT JOIN users u ON a.user_id=u.id
@@ -927,7 +929,7 @@ def admin_students():
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     db    = get_db(); cur = db.cursor()
     cur.execute(f"SELECT COUNT(*) AS c FROM students {where}", params)
-    total  = (_row_to_dict(cur.fetchone()) or {}).get("c", 0)
+    total  = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
     offset = (page-1)*per_page
     if is_use_pg():
         cur.execute(f"SELECT * FROM students {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
@@ -1139,7 +1141,7 @@ def admin_audit():
     offset   = (page-1)*per_page
     db = get_db(); cur = db.cursor()
     cur.execute("SELECT COUNT(*) AS c FROM audit_log")
-    total = (_row_to_dict(cur.fetchone()) or {}).get("c",0)
+    total = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
     if is_use_pg():
         cur.execute("""SELECT a.*,u.full_name,u.email FROM audit_log a
                        LEFT JOIN users u ON a.user_id=u.id
@@ -1188,7 +1190,7 @@ def api_students():
         cur.execute("SELECT student_id,full_name,year,college,image_path,created_at FROM students ORDER BY created_at DESC LIMIT ? OFFSET ?", (per_page,offset))
     rows=[_row_to_dict(r) for r in cur.fetchall()]
     cur.execute("SELECT COUNT(*) AS c FROM students")
-    total=(_row_to_dict(cur.fetchone()) or {}).get("c",0)
+    total = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
     db.close()
     return jsonify(students=rows, total=total, page=page)
 
