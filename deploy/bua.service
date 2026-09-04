@@ -1,0 +1,24 @@
+[Unit]
+Description=BUA Student ID Portal – Production Service
+After=network.target postgresql.service
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/bua
+Environment="PATH=/var/www/bua/venv/bin:/usr/local/bin:/usr/bin"
+ExecStart=/var/www/bua/venv/bin/gunicorn -c deploy/gunicorn_config.py wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=15
+Restart=always
+RestartSec=5
+
+# Hardening / Sandboxing
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

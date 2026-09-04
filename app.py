@@ -46,6 +46,9 @@ if not jwt_secret_env:
 app.config["JWT_SECRET_KEY"]           = jwt_secret_env
 
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=8)
+app.config["SESSION_COOKIE_HTTPONLY"]  = True
+app.config["SESSION_COOKIE_SAMESITE"]  = "Lax"
+app.config["SESSION_COOKIE_SECURE"]    = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
 app.config["MAX_CONTENT_LENGTH"]       = int(os.getenv("MAX_CONTENT_LENGTH", 5*1024*1024))
 mail_port = int(os.getenv("MAIL_PORT", 587))
 use_ssl_env = os.getenv("MAIL_USE_SSL")
