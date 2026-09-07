@@ -101,53 +101,420 @@
   display:block;
   margin:0 auto 12px
 }
-.users-grid{
+/* USERS & SUPERVISORS DASHBOARD STYLES */
+.users-stats-bar{
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
-  gap:14px;
-  margin-top:16px
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:12px;
+  margin-bottom:16px;
 }
-.user-card{
+.users-stat-card{
   background:#fff;
+  border:1px solid #e2e8f0;
   border-radius:12px;
-  padding:16px;
-  border:1px solid #dce3ef;
+  padding:14px 16px;
   display:flex;
   align-items:center;
-  gap:12px;
-  box-shadow:0 2px 8px rgba(0,0,0,.04)
+  gap:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.02);
+  transition:all .18s;
 }
-.user-av{
-  width:42px;
-  height:42px;
-  border-radius:50%;
-  background:var(--light);
+.users-stat-card:hover{
+  border-color:#cbd5e1;
+  box-shadow:0 4px 14px rgba(13,31,60,.05);
+}
+.stat-icon-wrap{
+  width:44px;
+  height:44px;
+  border-radius:10px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-weight:700;
-  font-size:.95rem;
-  color:var(--blue);
   flex-shrink:0;
-  border:2px solid #dce3ef
 }
-.user-info{
+.stat-icon-wrap svg{
+  width:22px;
+  height:22px;
+}
+.stat-icon-wrap.blue{background:rgba(26,58,107,.1);color:var(--navy);fill:currentColor;}
+.stat-icon-wrap.gold{background:rgba(232,184,75,.16);color:#b45309;fill:currentColor;}
+.stat-icon-wrap.green{background:rgba(22,163,74,.1);color:#16a34a;fill:currentColor;}
+.stat-icon-wrap.purple{background:rgba(124,58,237,.1);color:#7c3aed;fill:currentColor;}
+.stat-num{
+  font-size:1.35rem;
+  font-weight:800;
+  color:var(--navy);
+  line-height:1.1;
+  font-family:monospace;
+}
+.stat-label{
+  font-size:.74rem;
+  color:var(--muted);
+  font-weight:600;
+  margin-top:2px;
+}
+
+.users-filter-bar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:20px;
+  background:#fff;
+  padding:12px 16px;
+  border-radius:14px;
+  border:1px solid #e2e8f0;
+  box-shadow:0 2px 6px rgba(0,0,0,.02);
+}
+.users-search-box{
+  position:relative;
   flex:1;
-  min-width:0
+  min-width:280px;
+  display:flex;
+  align-items:center;
 }
-.user-info strong{
-  display:block;
-  font-size:.85rem;
+.users-search-box svg{
+  position:absolute;
+  right:12px;
+  width:16px;
+  height:16px;
+  fill:var(--muted);
+  pointer-events:none;
+}
+.users-search-box input{
+  width:100%;
+  padding:8px 36px 8px 32px;
+  border:1px solid #cbd5e1;
+  border-radius:9px;
+  font-size:.84rem;
+  outline:none;
+  transition:border-color .2s, box-shadow .2s;
+  font-family:'Cairo';
+}
+.users-search-box input:focus{
+  border-color:var(--blue);
+  box-shadow:0 0 0 3px rgba(37,99,235,.1);
+}
+#users-search-clear{
+  position:absolute;
+  left:10px;
+  background:none;
+  border:none;
+  font-size:1.2rem;
+  color:var(--muted);
+  cursor:pointer;
+  padding:0;
+  line-height:1;
+}
+.users-filter-tabs{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.uf-pill{
+  padding:6px 12px;
+  border-radius:20px;
+  font-size:.76rem;
+  font-weight:600;
+  border:1px solid #e2e8f0;
+  background:#f8fafc;
   color:var(--text);
+  cursor:pointer;
+  transition:all .18s;
+  font-family:'Cairo';
+}
+.uf-pill:hover{background:#e2e8f0;}
+.uf-pill.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+
+.users-sections-wrap, .users-grid{
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  margin-top:10px;
+}
+.college-block{
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:0 4px 16px rgba(13,31,60,.03);
+  transition:border-color .2s;
+}
+.college-block-header{
+  background:linear-gradient(135deg,#0d1f3c 0%,#1a3a6b 100%);
+  padding:14px 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:2px solid rgba(232,184,75,.4);
+}
+.cb-title-wrap{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.cb-icon-badge{
+  width:32px;
+  height:32px;
+  border-radius:8px;
+  background:rgba(232,184,75,.18);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--gold2);
+  flex-shrink:0;
+}
+.cb-name{
+  color:#fff;
+  font-size:.95rem;
+  font-weight:700;
+  margin:0;
+}
+.cb-stats-pills{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.cb-pill{
+  font-size:.72rem;
+  font-weight:600;
+  padding:3px 10px;
+  border-radius:12px;
+}
+.cb-pill.staff{
+  background:rgba(232,184,75,.2);
+  color:var(--gold2);
+  border:1px solid rgba(232,184,75,.3);
+}
+.cb-pill.students{
+  background:rgba(59,130,246,.2);
+  color:#93c5fd;
+  border:1px solid rgba(59,130,246,.3);
+}
+
+.college-block-body{
+  padding:18px 20px;
+}
+.cb-section-title{
+  font-size:.82rem;
+  font-weight:700;
+  color:var(--navy);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:12px;
+  padding-bottom:6px;
+  border-bottom:1px solid #f1f5f9;
+}
+.staff-cards-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
+  gap:14px;
+  margin-bottom:14px;
+}
+
+.user-card-v2{
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  padding:14px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  transition:transform .18s,box-shadow .18s,border-color .18s;
+  box-shadow:0 2px 6px rgba(0,0,0,.02);
+  position:relative;
+}
+.user-card-v2:hover{
+  transform:translateY(-2px);
+  box-shadow:0 6px 18px rgba(13,31,60,.07);
+  border-color:#cbd5e1;
+}
+.uc-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.uc-head-right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:1;
+  min-width:0;
+}
+.uc-avatar{
+  width:44px;
+  height:44px;
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:800;
+  font-size:1.05rem;
+  color:#fff;
+  flex-shrink:0;
+  box-shadow:0 2px 6px rgba(0,0,0,.1);
+}
+.uc-avatar.superadmin{background:linear-gradient(135deg,#0d1f3c,#1a3a6b);border:2px solid var(--gold2);}
+.uc-avatar.admin{background:linear-gradient(135deg,#1e40af,#3b82f6);border:2px solid #93c5fd;}
+.uc-avatar.staff{background:linear-gradient(135deg,#0f766e,#14b8a6);border:2px solid #99f6e4;}
+.uc-avatar.student{background:linear-gradient(135deg,#475569,#64748b);border:2px solid #cbd5e1;}
+
+.uc-info{flex:1;min-width:0;}
+.uc-name{
+  font-size:.88rem;
+  font-weight:700;
+  color:var(--navy);
   white-space:nowrap;
   overflow:hidden;
-  text-overflow:ellipsis
+  text-overflow:ellipsis;
+  margin-bottom:2px;
 }
-.user-info span{
-  font-size:.72rem;
+.uc-email{
+  font-size:.74rem;
   color:var(--muted);
-  font-family:'Tajawal'
+  font-family:monospace;
+  direction:ltr;
+  text-align:right;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
+
+.uc-status-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  font-size:.68rem;
+  font-weight:700;
+  padding:2px 8px;
+  border-radius:20px;
+  white-space:nowrap;
+}
+.uc-status-pill.active{background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;}
+.uc-status-pill.inactive{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;}
+.uc-status-pill.unverified{background:#fffbeb;color:#d97706;border:1px solid #fde68a;}
+.status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+.uc-meta-strip{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  flex-wrap:wrap;
+  font-size:.72rem;
+}
+
+.uc-password-box{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:8px;
+  padding:6px 10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  font-size:.76rem;
+  gap:8px;
+}
+.uc-pw-val{
+  font-family:'Courier New', monospace;
+  font-weight:700;
+  color:var(--navy);
+  direction:ltr;
+  letter-spacing:0.5px;
+}
+.uc-pw-copy-btn{
+  background:#fff;
+  border:1px solid #cbd5e1;
+  border-radius:6px;
+  padding:3px 7px;
+  font-size:.7rem;
+  cursor:pointer;
+  color:var(--blue);
+  display:flex;
+  align-items:center;
+  gap:3px;
+  transition:all .15s;
+  font-family:'Cairo';
+}
+.uc-pw-copy-btn:hover{background:#f1f5f9;border-color:var(--blue);}
+
+.uc-toolbar{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  padding-top:8px;
+  border-top:1px solid #f1f5f9;
+  margin-top:auto;
+}
+.btn-uc-action{
+  flex:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:6px 8px;
+  font-size:.74rem;
+  font-weight:600;
+  border-radius:7px;
+  border:1px solid #dce3ef;
+  background:#fff;
+  cursor:pointer;
+  transition:all .15s;
+  font-family:'Cairo';
+}
+.btn-uc-action svg{width:13px;height:13px;fill:currentColor;}
+.btn-uc-action:hover{background:#f8fafc;border-color:#cbd5e1;}
+.btn-uc-action.edit:hover{color:var(--blue);border-color:var(--blue);background:rgba(37,99,235,.05);}
+.btn-uc-action.key:hover{color:#d97706;border-color:#d97706;background:rgba(217,119,6,.05);}
+.btn-uc-action.toggle-off:hover{color:var(--danger);border-color:var(--danger);background:rgba(197,48,48,.05);}
+.btn-uc-action.toggle-on{background:#ecfdf5;color:#059669;border-color:#a7f3d0;}
+.btn-uc-action.toggle-on:hover{background:#d1fae5;}
+.btn-uc-action.delete{color:var(--danger);border-color:rgba(197,48,48,.2);background:rgba(197,48,48,.04);}
+.btn-uc-action.delete:hover{background:rgba(197,48,48,.1);border-color:var(--danger);}
+
+.stu-accordion-trigger{
+  background:linear-gradient(135deg,rgba(26,58,107,.04),rgba(37,99,235,.05));
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  padding:10px 14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  cursor:pointer;
+  transition:background .18s,border-color .18s;
+}
+.stu-accordion-trigger:hover{background:rgba(26,58,107,.08);border-color:#cbd5e1;}
+.stu-chevron{transition:transform .2s ease;display:inline-block;}
+.stu-chevron.open{transform:rotate(180deg);}
+
+.stu-list-grid{
+  margin-top:10px;
+  padding:10px;
+  background:#f8fafc;
+  border-radius:10px;
+  border:1px solid #e2e8f0;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(310px,1fr));
+  gap:10px;
+}
+.stu-card-item{
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:8px;
+  padding:10px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  box-shadow:0 1px 3px rgba(0,0,0,.02);
+  transition:border-color .15s;
+}
+.stu-card-item:hover{border-color:#cbd5e1;}
+.stu-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.stu-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px solid #f1f5f9;}
 .audit-action{
   font-size:.72rem;
   background:rgba(26,58,107,.08);
@@ -208,7 +575,7 @@
   <h1>إدارة الطلاب</h1>
   <div style="display:flex;align-items:center;gap:10px">
     <span class="results-count" id="total-badge">جارٍ التحميل…</span>
-    {% if role in ['superadmin','admin'] %}
+    {% if role in ['superadmin','admin','staff'] %}
     <a href="{{ url_for('admin_export') }}" class="btn btn-success btn-sm">
       <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24">
         <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
@@ -280,12 +647,90 @@
   <!-- USERS -->
   {% if role == 'superadmin' %}
   <div class="tab-panel" id="panel-users">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <h2 style="font-size:.95rem;font-weight:700">المستخدمون المسجلون</h2>
-      <button class="btn btn-primary btn-sm" onclick="openCreateUser()">+ إضافة مستخدم</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <h2 style="font-size:1.05rem;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:8px">
+          <svg style="width:20px;height:20px;fill:var(--gold2)" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          المستخدمون المسجلون وكلمات المرور
+        </h2>
+        <span style="font-size:.78rem;color:var(--muted)">إدارة وتعديل بيانات وصلاحيات المشرفين والطلاب والنسخ الاحتياطي السحابي</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <a href="{{ url_for('admin_export_users_excel') }}" class="btn btn-outline btn-sm" title="تحميل ملف إكسيل يحتوي على جميع المستخدمين وكلمات المرور">
+          <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          تحميل إكسيل
+        </a>
+        <button class="btn btn-sm" id="btn-gdrive-users" onclick="triggerGDriveUsersBackup()"
+          style="background:linear-gradient(135deg,#1a73e8,#1557b0);color:#fff;border:none;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 6px rgba(26,115,232,.3)"
+          title="رفع نسخة احتياطية إكسيل لقاعدة المستخدمين وكلمات المرور إلى Google Drive">
+          <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          <span id="txt-gdrive-users">نسخ لـ Google Drive</span>
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="openCreateUser()">+ إضافة مستخدم</button>
+      </div>
     </div>
-    <div class="users-grid" id="users-grid">
-      <div style="color:var(--muted);font-size:.85rem">جارٍ التحميل…</div>
+
+    <!-- USERS STATS BAR -->
+    <div class="users-stats-bar">
+      <div class="users-stat-card">
+        <div class="stat-icon-wrap blue">
+          <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+        </div>
+        <div>
+          <div class="stat-num" id="stat-total-users">0</div>
+          <div class="stat-label">إجمالي الحسابات</div>
+        </div>
+      </div>
+      <div class="users-stat-card">
+        <div class="stat-icon-wrap gold">
+          <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+        </div>
+        <div>
+          <div class="stat-num" id="stat-staff-users">0</div>
+          <div class="stat-label">المشرفون والإداريون</div>
+        </div>
+      </div>
+      <div class="users-stat-card">
+        <div class="stat-icon-wrap green">
+          <svg viewBox="0 0 24 24"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
+        </div>
+        <div>
+          <div class="stat-num" id="stat-student-users">0</div>
+          <div class="stat-label">حسابات الطلاب</div>
+        </div>
+      </div>
+      <div class="users-stat-card">
+        <div class="stat-icon-wrap purple">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        </div>
+        <div>
+          <div class="stat-num" id="stat-active-users">0</div>
+          <div class="stat-label">حسابات نشطة</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- USERS SEARCH & ROLE FILTER BAR -->
+    <div class="users-filter-bar">
+      <div class="users-search-box">
+        <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input type="text" id="users-search-input" placeholder="بحث باسم المستخدم، البريد، الكلية، الرقم الجامعي، أو كلمة المرور…" oninput="filterUsersList()">
+        <button type="button" id="users-search-clear" onclick="clearUsersSearch()" style="display:none" title="مسح البحث">&times;</button>
+      </div>
+      <div class="users-filter-tabs">
+        <button type="button" class="uf-pill active" onclick="setUserRoleFilter('all', this)">الكل</button>
+        <button type="button" class="uf-pill" onclick="setUserRoleFilter('superadmin', this)">👑 إدارة النظام</button>
+        <button type="button" class="uf-pill" onclick="setUserRoleFilter('admin', this)">🛡️ مشرفو الكليات</button>
+        <button type="button" class="uf-pill" onclick="setUserRoleFilter('staff', this)">📋 موظفو شئون الطلاب</button>
+        <button type="button" class="uf-pill" onclick="setUserRoleFilter('student', this)">🎓 الطلاب</button>
+      </div>
+    </div>
+
+    <div class="users-sections-wrap" id="users-grid">
+      <div style="text-align:center;padding:40px;color:var(--muted)">
+        <div class="loader-spin" style="margin:0 auto 12px"></div>
+        جارٍ التحميل…
+      </div>
     </div>
   </div>
 
@@ -309,7 +754,162 @@
   {% endif %}
 </div>
 
-<!-- DELETE MODAL -->
+<!-- VIEW STUDENT MODAL (READ ONLY) -->
+<div class="modal-bg" id="view-student-modal">
+  <div class="modal" style="max-width:540px;text-align:right">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;border-bottom:1px solid #dce3ef;padding-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:32px;height:32px;border-radius:8px;background:rgba(26,58,107,.1);display:flex;align-items:center;justify-content:center;color:var(--navy)">
+          <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+        </div>
+        <h3 style="margin:0;font-size:1.05rem;color:var(--navy)">بيانات الطالب (عرض فقط)</h3>
+      </div>
+      <button type="button" onclick="closeViewStudent()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1">&times;</button>
+    </div>
+
+    <!-- Student Profile Header (Image + Full Name) -->
+    <div style="display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,rgba(13,31,60,.03),rgba(26,58,107,.07));padding:16px;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:16px">
+      <img id="vs-image" src="" style="width:85px;height:105px;border-radius:10px;object-fit:cover;border:2px solid var(--gold2);box-shadow:0 4px 12px rgba(0,0,0,0.08);background:#fff" alt="صورة الطالب">
+      <div style="flex:1">
+        <h4 id="vs-full-name" style="margin:0 0 6px;font-size:1.05rem;color:var(--navy);font-weight:700"></h4>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <span class="student-id-badge" id="vs-student-id" style="font-size:.82rem"></span>
+          <span class="college-tag" id="vs-college"></span>
+          <span class="year-tag" id="vs-year"></span>
+        </div>
+        <span style="font-size:.75rem;color:#16a34a;background:rgba(22,163,74,.1);padding:3px 8px;border-radius:6px;font-weight:600">✓ مسجل بالنظام</span>
+      </div>
+    </div>
+
+    <!-- Details Grid (Read Only) -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:2px">الرقم الجامعي</div>
+        <div id="vs-detail-id" style="font-size:.85rem;font-weight:700;color:var(--navy);font-family:monospace;direction:ltr;text-align:right"></div>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:2px">الكلية</div>
+        <div id="vs-detail-college" style="font-size:.85rem;font-weight:600;color:var(--navy)"></div>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:2px">سنة القيد</div>
+        <div id="vs-detail-year" style="font-size:.85rem;font-weight:600;color:var(--navy)"></div>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:2px">البريد الإلكتروني</div>
+        <div id="vs-detail-email" style="font-size:.82rem;font-weight:600;color:var(--navy);direction:ltr;text-align:right;word-break:break-all"></div>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:2px">تاريخ ووقت التسجيل</div>
+        <div id="vs-detail-created" style="font-size:.78rem;color:var(--muted);direction:ltr;text-align:right"></div>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:2px">تاريخ آخر تحديث</div>
+        <div id="vs-detail-updated" style="font-size:.78rem;color:var(--muted);direction:ltr;text-align:right"></div>
+      </div>
+    </div>
+
+    <!-- Read-Only Notice -->
+    <div style="background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);color:#854d0e;padding:10px 14px;border-radius:8px;font-size:.78rem;display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <svg style="width:16px;height:16px;flex-shrink:0;fill:currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+      <span>هذه النافذة مخصصة لعرض بيانات الطالب فقط بدون صلاحية التعديل. لتعديل البيانات يرجى استخدام زر "تعديل".</span>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end">
+      <button type="button" onclick="closeViewStudent()" class="btn btn-outline" style="min-width:100px">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT STUDENT MODAL -->
+<div class="modal-bg" id="edit-student-modal">
+  <div class="modal" style="max-width:520px;text-align:right">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;border-bottom:1px solid #dce3ef;padding-bottom:10px">
+      <h3 style="margin:0;font-size:1.05rem">تعديل بيانات الطالب</h3>
+      <button type="button" onclick="closeEditStudent()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--muted)">&times;</button>
+    </div>
+    <div class="modal-form">
+      <input type="hidden" id="es-id">
+
+      {% if role == 'admin' %}
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:.8rem;color:#1e40af;display:flex;align-items:center;gap:8px">
+        <svg style="width:16px;height:16px;fill:currentColor;flex-shrink:0" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <span>صلاحية مشرف الكلية: متاح لك تحديث الصورة الشخصية للطالب فقط (البيانات الأخرى للقراءة فقط).</span>
+      </div>
+      {% endif %}
+      
+      <!-- Photo Section -->
+      <div style="display:flex;align-items:center;gap:14px;background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:14px">
+        <img id="es-preview" src="" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:2px solid #cbd5e1" alt="">
+        <div style="flex:1">
+          <label for="es-image" class="btn btn-outline btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+            <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm8 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>
+            تغيير صورة الطالب
+          </label>
+          <input type="file" id="es-image" accept="image/*" style="display:none" onchange="previewEditStudentPhoto(this)">
+          <div style="font-size:.72rem;color:var(--muted);margin-top:4px">
+            {% if role == 'admin' %}
+            <span style="color:var(--blue);font-weight:600">اختر صورة جديدة لحفظ التعديل</span>
+            {% else %}
+            اختياري - يتم أرشفة الصورة القديمة ومزامنتها على Google Drive
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>اسم الطالب الكامل <span class="req">*</span></label>
+        <input type="text" id="es-full-name" placeholder="الاسم الكامل للطالب" {% if role == 'admin' %}readonly style="background:#f1f5f9;cursor:not-allowed"{% endif %}>
+      </div>
+
+      <div class="field">
+        <label>رقم الطالب / الكود الجامعي <span class="req">*</span></label>
+        <input type="text" id="es-student-id" {% if role not in ['superadmin','staff'] %}readonly style="background:#f1f5f9;cursor:not-allowed"{% endif %}>
+        {% if role in ['superadmin','staff'] %}
+        <small style="color:var(--muted);font-size:.72rem;display:block;margin-top:3px">ميزة المشرف / شئون الطلاب: تعديل الكود سيقوم بتحديث الحساب الجامعي المرتبط تلقائياً.</small>
+        {% else %}
+        <small style="color:var(--muted);font-size:.72rem;display:block;margin-top:3px">تعديل كود الطالب متاح فقط للمشرف العام وشئون الطلاب.</small>
+        {% endif %}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field">
+          <label>الكلية</label>
+          {% if role in ['superadmin','staff'] %}
+          <select id="es-college">
+            {% for c in colleges %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+          {% else %}
+          <input type="text" id="es-college" readonly style="background:#f1f5f9;cursor:not-allowed">
+          {% endif %}
+        </div>
+        <div class="field">
+          <label>سنة الالتحاق</label>
+          {% if role in ['superadmin','staff'] %}
+          <select id="es-year">
+            {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+          </select>
+          {% else %}
+          <input type="text" id="es-year" readonly style="background:#f1f5f9;cursor:not-allowed">
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label>البريد الإلكتروني للطالب <span class="req">*</span></label>
+        <input type="email" id="es-email" placeholder="student@{{ domain }}" {% if role == 'admin' %}readonly style="background:#f1f5f9;cursor:not-allowed"{% endif %} required>
+      </div>
+
+      <div id="es-msg" style="font-size:.82rem;padding:8px 11px;border-radius:7px;margin-bottom:8px;display:none"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" style="flex:1" onclick="closeEditStudent()">إلغاء</button>
+      <button type="button" class="btn btn-primary" style="flex:1" id="save-student-btn" onclick="submitEditStudent()">حفظ التعديلات</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE MODAL (Superadmin Only) -->
 <div class="modal-bg" id="del-modal">
   <div class="modal">
     <div style="width:52px;height:52px;border-radius:50%;background:rgba(197,48,48,.1);
@@ -319,7 +919,7 @@
       </svg>
     </div>
     <h3>تأكيد الحذف</h3>
-    <p>هل أنت متأكد؟ لا يمكن التراجع.</p>
+    <p>هل أنت متأكد من حذف هذا الطالب؟ لا يمكن التراجع عن هذا الإجراء.</p>
     <div class="modal-actions">
       <button class="btn btn-outline" style="flex:1" onclick="closeDel()">إلغاء</button>
       <button class="btn btn-danger" style="flex:1" id="confirm-del-btn">حذف نهائياً</button>
@@ -407,12 +1007,74 @@
     </div>
   </div>
 </div>
+
+<!-- EDIT USER / SUPERVISOR MODAL -->
+<div class="modal-bg" id="edit-user-modal">
+  <div class="modal" style="max-width:460px;text-align:right">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;border-bottom:1px solid #dce3ef;padding-bottom:10px">
+      <h3 style="margin:0;font-size:1.05rem">تعديل صلاحيات المشرف</h3>
+      <button type="button" onclick="closeEditUser()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--muted)">&times;</button>
+    </div>
+    <div class="modal-form">
+      <input type="hidden" id="eu-uid">
+      <div class="field">
+        <label>الاسم الكامل <span class="req">*</span></label>
+        <input type="text" id="eu-name" placeholder="اسم المشرف">
+      </div>
+      <div class="field">
+        <label>البريد الإلكتروني</label>
+        <input type="email" id="eu-email" readonly style="background:#f1f5f9;cursor:not-allowed">
+      </div>
+      <div class="field">
+        <label>الدور / الصلاحية</label>
+        <select id="eu-role" onchange="document.getElementById('eu-college-wrap').style.display=this.value==='admin'?'block':'none'">
+          {% for k,v in roles.items() %}
+            {% if k != 'student' %}
+              <option value="{{ k }}">{{ v }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" id="eu-college-wrap">
+        <label>الكلية التابع لها</label>
+        <select id="eu-college">
+          <option value="">إدارة النظام العامة (بدون كلية محددة)</option>
+          {% for c in colleges %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div id="eu-msg" style="font-size:.82rem;padding:8px 11px;border-radius:7px;margin-bottom:6px;display:none"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" style="flex:1" onclick="closeEditUser()">إلغاء</button>
+      <button class="btn btn-primary" style="flex:1" id="save-user-btn" onclick="submitEditUser()">حفظ التغييرات</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE USER MODAL -->
+<div class="modal-bg" id="del-user-modal">
+  <div class="modal">
+    <div style="width:52px;height:52px;border-radius:50%;background:rgba(197,48,48,.1);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+      <svg style="width:26px;height:26px;fill:var(--danger)" viewBox="0 0 24 24">
+        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+      </svg>
+    </div>
+    <h3>حذف المستخدم</h3>
+    <p id="del-user-text">هل أنت متأكد من حذف هذا الحساب؟ لا يمكن التراجع.</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" style="flex:1" onclick="closeDelUser()">إلغاء</button>
+      <button class="btn btn-danger" style="flex:1" id="confirm-del-user-btn">حذف الحساب</button>
+    </div>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 let pendingDelId = null, curPage = 1;
+let loadedStudents = {};
 const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 const ROLE = {{ role | tojson }};
 
@@ -466,7 +1128,9 @@ async function loadStudents(page = 1) {
     return;
   }
 
+  loadedStudents = {};
   tbody.innerHTML = data.students.map(s => {
+    loadedStudents[s.id] = s;
     const imgUrl = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
       ? s.image_path : '/static/' + (s.image_path || '');
     return `<tr>
@@ -478,14 +1142,20 @@ async function loadStudents(page = 1) {
       <td style="color:var(--muted);font-size:.74rem;direction:ltr">${fmt(s.created_at)}</td>
       <td>
         <div style="display:flex;gap:5px;flex-wrap:wrap">
-          <a href="/student/${escapeHTML(s.student_id)}" target="_blank" class="btn btn-outline btn-sm" title="عرض البطاقة">
+          <button onclick="openViewStudent(${s.id})" class="btn btn-outline btn-sm" title="عرض بيانات الطالب">
             <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
               <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
             </svg>
-          </a>
-          ${ROLE !== 'staff' ? `
+          </button>
+          <button onclick="openEditStudent(${s.id})" class="btn btn-outline btn-sm" title="تعديل بيانات الطالب">
+            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+            </svg>
+            تعديل
+          </button>
+          ${ROLE === 'superadmin' ? `
           <button onclick="confirmDel(${s.id})" class="btn btn-sm"
-            style="background:rgba(197,48,48,.08);color:var(--danger);border:1px solid rgba(197,48,48,.2)" title="حذف">
+            style="background:rgba(197,48,48,.08);color:var(--danger);border:1px solid rgba(197,48,48,.2)" title="حذف (المشرف العام فقط)">
             <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
               <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
             </svg>
@@ -524,7 +1194,137 @@ function resetFilters() {
 }
 document.getElementById('q').addEventListener('keydown', e => { if(e.key==='Enter') loadStudents(1); });
 
-// Delete
+// Student Edit Handlers
+function openEditStudent(id) {
+  const s = loadedStudents[id];
+  if (!s) return;
+  document.getElementById('es-id').value = s.id;
+  document.getElementById('es-full-name').value = s.full_name || '';
+  document.getElementById('es-student-id').value = s.student_id || '';
+  const colEl = document.getElementById('es-college');
+  if (colEl) colEl.value = s.college || '';
+  const yrEl = document.getElementById('es-year');
+  if (yrEl) yrEl.value = s.year || '';
+  document.getElementById('es-email').value = s.email || '';
+  
+  const imgUrl = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
+    ? s.image_path : '/static/' + (s.image_path || '');
+  document.getElementById('es-preview').src = imgUrl;
+  document.getElementById('es-image').value = '';
+  
+  const msg = document.getElementById('es-msg');
+  msg.style.display = 'none';
+  document.getElementById('edit-student-modal').classList.add('open');
+}
+
+function closeEditStudent() {
+  document.getElementById('edit-student-modal')?.classList.remove('open');
+}
+
+// View Student (Read Only Modal)
+function openViewStudent(id) {
+  const s = loadedStudents[id];
+  if (!s) return;
+
+  const imgUrl = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
+    ? s.image_path : '/static/' + (s.image_path || '');
+  document.getElementById('vs-image').src = imgUrl;
+  document.getElementById('vs-full-name').textContent = s.full_name || '—';
+  document.getElementById('vs-student-id').textContent = s.student_id || '—';
+  document.getElementById('vs-college').textContent = s.college || '—';
+  document.getElementById('vs-year').textContent = s.year || '—';
+
+  document.getElementById('vs-detail-id').textContent = s.student_id || '—';
+  document.getElementById('vs-detail-college').textContent = s.college || '—';
+  document.getElementById('vs-detail-year').textContent = s.year || '—';
+  document.getElementById('vs-detail-email').textContent = s.email || 'غير مسجل';
+  document.getElementById('vs-detail-created').textContent = fmt(s.created_at);
+  document.getElementById('vs-detail-updated').textContent = s.updated_at ? fmt(s.updated_at) : 'لا توجد تعديلات';
+
+  document.getElementById('view-student-modal').classList.add('open');
+}
+
+function closeViewStudent() {
+  document.getElementById('view-student-modal')?.classList.remove('open');
+}
+document.getElementById('view-student-modal')?.addEventListener('click', function(e) { if(e.target===this) closeViewStudent(); });
+
+function previewEditStudentPhoto(input) {
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('es-preview').src = e.target.result;
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+async function submitEditStudent() {
+  const sid = document.getElementById('es-id').value;
+  const name = document.getElementById('es-full-name').value.trim();
+  const studentId = document.getElementById('es-student-id').value.trim();
+  const colEl = document.getElementById('es-college');
+  const yrEl = document.getElementById('es-year');
+  const email = document.getElementById('es-email').value.trim();
+  const imgFile = document.getElementById('es-image').files[0];
+  const msg = document.getElementById('es-msg');
+  const btn = document.getElementById('save-student-btn');
+
+  if (ROLE !== 'admin') {
+    if (!name) {
+      msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+      msg.textContent = 'يرجى إدخال اسم الطالب الكامل'; return;
+    }
+    if (!email) {
+      msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+      msg.textContent = 'البريد الإلكتروني للطالب إلزامي'; return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+      msg.textContent = 'صيغة البريد الإلكتروني غير صحيحة'; return;
+    }
+  } else {
+    if (!imgFile) {
+      msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+      msg.textContent = 'مشرف الكلية مصرح له بتحديث صورة الطالب فقط. يرجى اختيار صورة جديدة أولاً.'; return;
+    }
+  }
+
+  const formData = new FormData();
+  formData.append('full_name', name);
+  formData.append('student_id', studentId);
+  if (colEl) formData.append('college', colEl.value);
+  if (yrEl) formData.append('year', yrEl.value);
+  formData.append('email', email);
+  if (imgFile) formData.append('image', imgFile);
+
+  btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
+  try {
+    const res = await fetch(`/admin/student/${sid}/edit`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken
+      },
+      body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      closeEditStudent();
+      loadStudents(curPage);
+    } else {
+      msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+      msg.textContent = data.message || 'حدث خطأ أثناء التعديل';
+    }
+  } catch (e) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'تعذر الاتصال بالخادم';
+  } finally {
+    btn.disabled = false; btn.textContent = 'حفظ التعديلات';
+  }
+}
+
+// Delete Student (Superadmin Only)
 function confirmDel(id) {
   pendingDelId = id;
   document.getElementById('del-modal').classList.add('open');
@@ -533,7 +1333,7 @@ function closeDel() {
   document.getElementById('del-modal').classList.remove('open');
   pendingDelId = null;
 }
-document.getElementById('confirm-del-btn').addEventListener('click', async () => {
+document.getElementById('confirm-del-btn')?.addEventListener('click', async () => {
   if (!pendingDelId) return;
   const id = pendingDelId; closeDel();
   const res  = await fetch('/admin/delete/' + id, {
@@ -546,86 +1346,441 @@ document.getElementById('confirm-del-btn').addEventListener('click', async () =>
   showToast(data.message, data.success ? 'success' : 'error');
   if (data.success) loadStudents(curPage);
 });
-document.getElementById('del-modal').addEventListener('click', function(e) { if(e.target===this) closeDel(); });
+document.getElementById('del-modal')?.addEventListener('click', function(e) { if(e.target===this) closeDel(); });
+document.getElementById('edit-student-modal')?.addEventListener('click', function(e) { if(e.target===this) closeEditStudent(); });
 
-// Users — grouped by college
-async function loadUsers() {
-  const res  = await fetch('/admin/users');
-  const data = await res.json();
-  const rl   = { superadmin:'مدير النظام', admin:'مسؤول كلية', staff:'موظف تسجيل', student:'طالب' };
-  const grid = document.getElementById('users-grid');
-  const grouped = data.grouped || {};
+// ══════════════════════════════════════════════════════════════════════════
+// USERS & SUPERVISORS MANAGEMENT
+// ══════════════════════════════════════════════════════════════════════════
 
-  if (!Object.keys(grouped).length) {
-    grid.innerHTML = '<p style="color:var(--muted)">لا يوجد مستخدمون</p>';
+let cachedUsersData = null;
+let userRoleFilter = 'all';
+
+// Clipboard copy helper
+function copyPassword(pw, btn) {
+  if (!pw || pw === '—') return;
+  navigator.clipboard.writeText(pw).then(() => {
+    showToast('تم نسخ كلمة المرور إلى الحافظة بنجاح ✓', 'success');
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = `✓ تم النسخ`;
+      btn.style.color = '#16a34a';
+      btn.style.borderColor = '#16a34a';
+      setTimeout(() => {
+        btn.innerHTML = orig;
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }, 1800);
+    }
+  }).catch(() => {
+    showToast('تعذر النسخ تلقائياً', 'error');
+  });
+}
+
+function toggleCollegeStudents(id, chevronId) {
+  const el = document.getElementById(id);
+  const ch = chevronId ? document.getElementById(chevronId) : null;
+  if (!el) return;
+  const isHidden = (el.style.display === 'none' || !el.style.display);
+  el.style.display = isHidden ? 'grid' : 'none';
+  if (ch) {
+    if (isHidden) ch.classList.add('open');
+    else ch.classList.remove('open');
+  }
+}
+
+function setUserRoleFilter(role, btn) {
+  userRoleFilter = role;
+  document.querySelectorAll('.uf-pill').forEach(el => el.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderUsersList();
+}
+
+function filterUsersList() {
+  const inp = document.getElementById('users-search-input');
+  const clr = document.getElementById('users-search-clear');
+  if (clr) clr.style.display = inp && inp.value.trim() ? 'block' : 'none';
+  renderUsersList();
+}
+
+function clearUsersSearch() {
+  const inp = document.getElementById('users-search-input');
+  const clr = document.getElementById('users-search-clear');
+  if (inp) inp.value = '';
+  if (clr) clr.style.display = 'none';
+  renderUsersList();
+}
+
+function userCard(u, rl) {
+  const roleName = rl[u.role] || u.role;
+  const avatarLetter = escapeHTML((u.full_name || '?')[0]);
+  const roleClass = u.role === 'superadmin' ? 'superadmin'
+                  : u.role === 'admin'      ? 'admin'
+                  : u.role === 'staff'      ? 'staff'
+                  : 'student';
+
+  const roleBadgeStyle = u.role === 'superadmin'
+    ? 'background:linear-gradient(135deg,rgba(13,31,60,.08),rgba(232,184,75,.18));color:var(--navy);border:1px solid rgba(232,184,75,.5);font-weight:700'
+    : u.role === 'admin'
+    ? 'background:rgba(37,99,235,.08);color:#1d4ed8;border:1px solid rgba(37,99,235,.25);font-weight:700'
+    : 'background:rgba(13,148,136,.08);color:#0f766e;border:1px solid rgba(13,148,136,.25);font-weight:700';
+
+  const roleIcon = u.role === 'superadmin' ? '👑'
+                 : u.role === 'admin'      ? '🛡️'
+                 : '📋';
+
+  const statusHtml = !u.is_active
+    ? `<span class="uc-status-pill inactive"><span class="status-dot"></span>موقوف</span>`
+    : !u.email_verified
+    ? `<span class="uc-status-pill unverified"><span class="status-dot"></span>غير مفعّل</span>`
+    : `<span class="uc-status-pill active"><span class="status-dot"></span>نشط</span>`;
+
+  const pwPlain = u.password_plain || '—';
+
+  return `
+    <div class="user-card-v2">
+      <!-- Head: Avatar, User Details, Status -->
+      <div class="uc-head">
+        <div class="uc-head-right">
+          <div class="uc-avatar ${roleClass}">${avatarLetter}</div>
+          <div class="uc-info">
+            <div class="uc-name" title="${escapeHTML(u.full_name)}">${escapeHTML(u.full_name)}</div>
+            <div class="uc-email" title="${escapeHTML(u.email)}">${escapeHTML(u.email)}</div>
+          </div>
+        </div>
+        ${statusHtml}
+      </div>
+
+      <!-- Meta Strip: Role & College -->
+      <div class="uc-meta-strip">
+        <span class="badge" style="${roleBadgeStyle}">
+          ${roleIcon} ${roleName}
+        </span>
+        ${u.college && u.college !== 'إدارة النظام' ? `
+          <span class="badge" style="background:#f1f5f9;color:var(--navy);border:1px solid #cbd5e1">
+            🏛️ ${escapeHTML(u.college)}
+          </span>` : ''}
+      </div>
+
+      <!-- Password Credentials Strip -->
+      <div class="uc-password-box">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="color:var(--muted);font-size:.72rem">🔑 كلمة المرور:</span>
+          <span class="uc-pw-val">${escapeHTML(pwPlain)}</span>
+        </div>
+        ${pwPlain !== '—' ? `
+          <button type="button" class="uc-pw-copy-btn" onclick="copyPassword('${escapeHTML(pwPlain)}', this)" title="نسخ كلمة المرور إلى الحافظة">
+            <svg style="width:11px;height:11px;fill:currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            نسخ
+          </button>` : ''}
+      </div>
+
+      <!-- Action Toolbar -->
+      <div class="uc-toolbar">
+        <button type="button" onclick="openEditUser(${u.id}, '${escapeHTML(u.full_name)}', '${escapeHTML(u.email)}', '${u.role}', '${escapeHTML(u.college||'')}')"
+          class="btn-uc-action edit" title="تعديل صلاحيات المشرف">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          تعديل
+        </button>
+        <button type="button" onclick="openResetUserPw(${u.id}, '${escapeHTML(u.full_name)}', '${escapeHTML(u.email)}')"
+          class="btn-uc-action key" title="تعيين كلمة مرور جديدة">
+          <svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+          كلمة المرور
+        </button>
+        <button type="button" onclick="toggleUser(${u.id})"
+          class="btn-uc-action ${u.is_active ? 'toggle-off' : 'toggle-on'}"
+          title="${u.is_active ? 'إيقاف الحساب' : 'تفعيل الحساب'}">
+          <svg viewBox="0 0 24 24">
+            ${u.is_active
+              ? '<path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/>'
+              : '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'}
+          </svg>
+          ${u.is_active ? 'إيقاف' : 'تفعيل'}
+        </button>
+        ${u.role !== 'superadmin' ? `
+        <button type="button" onclick="confirmDelUser(${u.id}, '${escapeHTML(u.full_name)}')"
+          class="btn-uc-action delete" title="حذف الحساب نهائياً">
+          <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          حذف
+        </button>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderUsersList() {
+  const container = document.getElementById('users-grid');
+  if (!container || !cachedUsersData) return;
+
+  const rl = { superadmin:'مدير النظام الرئيسي', admin:'مشرف الكلية', staff:'موظف شئون طلاب', student:'طالب' };
+  const allUsers = cachedUsersData.users || [];
+  const q = (document.getElementById('users-search-input')?.value || '').trim().toLowerCase();
+  const roleFilter = userRoleFilter || 'all';
+
+  // Filter users based on query and role
+  const filteredUsers = allUsers.filter(u => {
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+    if (q) {
+      const matchName = (u.full_name || '').toLowerCase().includes(q);
+      const matchEmail = (u.email || '').toLowerCase().includes(q);
+      const matchCollege = (u.college || '').toLowerCase().includes(q);
+      const matchSid = (u.student_id || '').toLowerCase().includes(q);
+      const matchPw = (u.password_plain || '').toLowerCase().includes(q);
+      if (!matchName && !matchEmail && !matchCollege && !matchSid && !matchPw) return false;
+    }
+    return true;
+  });
+
+  if (!filteredUsers.length) {
+    container.innerHTML = `
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:40px 20px;text-align:center">
+        <svg style="width:48px;height:48px;fill:#cbd5e1;display:block;margin:0 auto 12px" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <h4 style="margin:0 0 6px;color:var(--navy);font-size:.95rem">لا توجد نتائج مطابقة</h4>
+        <p style="margin:0;color:var(--muted);font-size:.8rem">جرب تعديل كلمة البحث أو تغيير تبويب الدور المحدد</p>
+      </div>`;
     return;
   }
 
-  grid.innerHTML = Object.entries(grouped).map(([college, members]) => {
+  // Regroup filtered users by college
+  const grouped = {};
+  filteredUsers.forEach(u => {
+    const key = u.college || 'إدارة النظام';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(u);
+  });
+
+  container.innerHTML = Object.entries(grouped).map(([college, members]) => {
     const nonStudents = members.filter(u => u.role !== 'student');
     const students    = members.filter(u => u.role === 'student');
     const staffCards  = nonStudents.map(u => userCard(u, rl)).join('');
-    const stuSummary  = students.length
-      ? `<div style="background:rgba(26,58,107,.05);border-radius:10px;padding:10px 14px;
-           margin-top:8px;display:flex;align-items:center;justify-content:space-between">
-           <span style="font-size:.82rem;color:var(--muted)">الطلاب المسجلون</span>
-           <span class="badge badge-blue">${students.length} طالب</span>
-         </div>` : '';
-    return `
-      <div style="border:1px solid #dce3ef;border-radius:14px;overflow:hidden;margin-bottom:16px">
-        <div style="background:linear-gradient(135deg,var(--navy),var(--blue));
-          padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+    const safeColId   = 'col-stu-' + encodeURIComponent(college).replace(/%/g, '_');
+    const safeChevronId = 'col-chv-' + encodeURIComponent(college).replace(/%/g, '_');
+    const isSearching = !!q || roleFilter === 'student';
+
+    const stuSummary = students.length ? `
+      <div style="margin-top:14px">
+        <div class="stu-accordion-trigger" onclick="toggleCollegeStudents('${safeColId}', '${safeChevronId}')">
           <div style="display:flex;align-items:center;gap:8px">
-            <svg style="width:16px;height:16px;fill:var(--gold2)" viewBox="0 0 24 24">
-              <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/>
-            </svg>
-            <span style="color:#fff;font-size:.875rem;font-weight:700">${escapeHTML(college)}</span>
+            <span style="font-size:1.1rem">🎓</span>
+            <span style="font-size:.85rem;font-weight:700;color:var(--navy)">الطلاب المسجلون</span>
+            <span class="badge badge-blue" style="font-size:.75rem">${students.length} طالب</span>
           </div>
-          <span style="font-size:.72rem;background:rgba(232,184,75,.2);color:var(--gold2);
-            padding:2px 9px;border-radius:20px">${members.length} مستخدم</span>
+          <div style="display:flex;align-items:center;gap:6px;color:var(--blue);font-size:.78rem;font-weight:600">
+            <span>عرض الطلاب وكلمات المرور</span>
+            <span class="stu-chevron ${isSearching ? 'open' : ''}" id="${safeChevronId}">▾</span>
+          </div>
         </div>
-        <div style="padding:12px">
-          ${staffCards || '<p style="color:var(--muted);font-size:.8rem;padding:4px 0">لا يوجد موظفون في هذه الكلية</p>'}
+
+        <div id="${safeColId}" class="stu-list-grid" style="display:${isSearching ? 'grid' : 'none'}">
+          ${students.map(s => {
+            const sid = escapeHTML(s.student_id || '—');
+            const pw = escapeHTML(s.password_plain || '—');
+            return `
+              <div class="stu-card-item">
+                <div class="stu-card-top">
+                  <div>
+                    <strong style="color:var(--navy);font-size:.86rem">${escapeHTML(s.full_name)}</strong>
+                    <div style="color:var(--muted);font-size:.72rem;font-family:monospace;direction:ltr;text-align:right">${escapeHTML(s.email)}</div>
+                  </div>
+                  <span class="badge badge-blue" style="font-family:monospace;font-size:.75rem;direction:ltr">${sid}</span>
+                </div>
+                <div class="stu-card-bottom">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span class="badge" style="background:#f1f5f9;color:#0d1f3c;font-family:monospace;direction:ltr;border:1px solid #cbd5e1" title="كلمة المرور">
+                      🔑 ${pw}
+                    </span>
+                    ${pw !== '—' ? `
+                      <button type="button" onclick="copyPassword('${pw}', this)" class="btn btn-sm btn-outline" style="padding:2px 7px;font-size:.68rem" title="نسخ كلمة المرور">
+                        📋 نسخ
+                      </button>` : ''}
+                  </div>
+                  <button type="button" onclick="openResetUserPw(${s.id}, '${escapeHTML(s.full_name)}', '${escapeHTML(s.email)}')" class="btn btn-sm btn-outline" style="padding:3px 8px;font-size:.7rem" title="تغيير كلمة المرور">
+                    🔑 تغيير
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>` : '';
+
+    return `
+      <div class="college-block">
+        <!-- Header -->
+        <div class="college-block-header">
+          <div class="cb-title-wrap">
+            <div class="cb-icon-badge">
+              <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
+            </div>
+            <h3 class="cb-name">${escapeHTML(college)}</h3>
+          </div>
+          <div class="cb-stats-pills">
+            ${nonStudents.length ? `<span class="cb-pill staff">🛡️ ${nonStudents.length} مشرفين / موظفين</span>` : ''}
+            ${students.length ? `<span class="cb-pill students">🎓 ${students.length} طالب</span>` : ''}
+          </div>
+        </div>
+
+        <!-- Body -->
+        <div class="college-block-body">
+          ${nonStudents.length ? `
+            <div class="cb-section-title">
+              <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+              طاقم الإشراف والموظفين
+            </div>
+            <div class="staff-cards-grid">
+              ${staffCards}
+            </div>` : roleFilter === 'superadmin' || roleFilter === 'admin' || roleFilter === 'staff' ? '' : `
+            <p style="color:var(--muted);font-size:.8rem;padding:4px 0;margin:0 0 8px">لا يوجد مشرفون مسجلون في هذه الكلية</p>`}
           ${stuSummary}
         </div>
       </div>`;
   }).join('');
 }
 
-function userCard(u, rl) {
-  const roleBadge = u.role === 'superadmin' ? 'badge-blue'
-                  : u.role === 'admin'      ? 'badge-gold'
-                  : 'badge-green';
-  return `
-    <div class="user-card" style="margin-bottom:8px">
-      <div class="user-av">${escapeHTML((u.full_name||'?')[0])}</div>
-      <div class="user-info">
-        <strong>${escapeHTML(u.full_name)}</strong>
-        <span style="display:block">${escapeHTML(u.email)}</span>
-        <span style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">
-          <span class="badge ${roleBadge}">${rl[u.role]||u.role}</span>
-          ${!u.email_verified ? '<span class="badge badge-red">غير مفعّل</span>' : ''}
-          ${!u.is_active ? '<span class="badge badge-red">موقوف</span>' : ''}
-        </span>
-      </div>
-      <div style="display:flex;gap:4px;align-items:center">
-        <button onclick="openResetUserPw(${u.id}, '${escapeHTML(u.full_name)}', '${escapeHTML(u.email)}')"
-          class="btn btn-sm btn-outline" title="تعيين كلمة مرور جديدة">
-          <svg style="width:13px;height:13px;fill:currentColor" viewBox="0 0 24 24">
-            <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
-          </svg>
-        </button>
-        <button onclick="toggleUser(${u.id})" class="btn btn-sm ${u.is_active?'btn-outline':'btn-success'}"
-          title="${u.is_active?'إيقاف الحساب':'تفعيل الحساب'}">
-          <svg style="width:13px;height:13px;fill:currentColor" viewBox="0 0 24 24">
-            ${u.is_active
-              ? '<path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/>'
-              : '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'}
-          </svg>
-        </button>
-      </div>
-    </div>`;
+async function loadUsers() {
+  try {
+    const res  = await fetch('/admin/users');
+    const data = await res.json();
+    cachedUsersData = data;
+
+    // Update KPI counters
+    const users = data.users || [];
+    const totalCount = users.length;
+    const staffCount = users.filter(u => u.role !== 'student').length;
+    const studentCount = users.filter(u => u.role === 'student').length;
+    const activeCount = users.filter(u => u.is_active).length;
+
+    const elTotal = document.getElementById('stat-total-users');
+    const elStaff = document.getElementById('stat-staff-users');
+    const elStudent = document.getElementById('stat-student-users');
+    const elActive = document.getElementById('stat-active-users');
+
+    if (elTotal) elTotal.textContent = totalCount;
+    if (elStaff) elStaff.textContent = staffCount;
+    if (elStudent) elStudent.textContent = studentCount;
+    if (elActive) elActive.textContent = activeCount;
+
+    renderUsersList();
+  } catch(err) {
+    const grid = document.getElementById('users-grid');
+    if (grid) grid.innerHTML = '<p style="color:var(--danger);padding:20px;text-align:center">تعذر تحميل بيانات المستخدمين</p>';
+  }
 }
+
+async function triggerGDriveUsersBackup() {
+  const btn = document.getElementById('btn-gdrive-users');
+  const txt = document.getElementById('txt-gdrive-users');
+  if (btn) btn.disabled = true;
+  if (txt) txt.textContent = 'جارٍ النسخ…';
+  try {
+    const res = await fetch('/admin/users/backup-gdrive', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(data.message, 'success');
+    } else {
+      toast(data.message || 'فشل النسخ الاحتياطي إلى Google Drive', 'error');
+    }
+  } catch (e) {
+    toast('تعذر الاتصال بالخادم أثناء النسخ الاحتياطي', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (txt) txt.textContent = 'نسخ لـ Google Drive';
+  }
+}
+
+// Supervisor Edit & Delete Handlers
+function openEditUser(uid, name, email, role, col) {
+  const modal = document.getElementById('edit-user-modal');
+  if (!modal) return;
+  document.getElementById('eu-uid').value = uid;
+  document.getElementById('eu-name').value = name;
+  document.getElementById('eu-email').value = email;
+  document.getElementById('eu-role').value = role;
+  const colWrap = document.getElementById('eu-college-wrap');
+  if (colWrap) colWrap.style.display = role === 'admin' ? 'block' : 'none';
+  const colEl = document.getElementById('eu-college');
+  if (colEl) colEl.value = col || '';
+  const msg = document.getElementById('eu-msg');
+  if (msg) msg.style.display = 'none';
+  modal.classList.add('open');
+}
+
+function closeEditUser() {
+  document.getElementById('edit-user-modal')?.classList.remove('open');
+}
+
+async function submitEditUser() {
+  const uid = document.getElementById('eu-uid').value;
+  const name = document.getElementById('eu-name').value.trim();
+  const role = document.getElementById('eu-role').value;
+  const col = document.getElementById('eu-college').value || null;
+  const btn = document.getElementById('save-user-btn');
+  const msg = document.getElementById('eu-msg');
+
+  if (!name) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'يرجى إدخال اسم المشرف'; return;
+  }
+
+  btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
+  try {
+    const res = await fetch(`/admin/users/${uid}/edit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({ full_name: name, role: role, college: col })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      closeEditUser();
+      loadUsers();
+    } else {
+      msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+      msg.textContent = data.message || 'حدث خطأ أثناء الحفظ';
+    }
+  } catch (e) {
+    msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
+    msg.textContent = 'تعذر الاتصال بالخادم';
+  } finally {
+    btn.disabled = false; btn.textContent = 'حفظ التغييرات';
+  }
+}
+
+let pendingDelUserId = null;
+function confirmDelUser(uid, name) {
+  pendingDelUserId = uid;
+  const txt = document.getElementById('del-user-text');
+  if (txt) txt.textContent = `هل أنت متأكد من حذف حساب (${name}) نهائياً؟`;
+  document.getElementById('del-user-modal')?.classList.add('open');
+}
+function closeDelUser() {
+  document.getElementById('del-user-modal')?.classList.remove('open');
+  pendingDelUserId = null;
+}
+document.getElementById('confirm-del-user-btn')?.addEventListener('click', async () => {
+  if (!pendingDelUserId) return;
+  const uid = pendingDelUserId; closeDelUser();
+  try {
+    const res = await fetch(`/admin/users/${uid}/delete`, {
+      method: 'DELETE',
+      headers: { 'X-CSRFToken': csrfToken }
+    });
+    const data = await res.json();
+    showToast(data.message, data.success ? 'success' : 'error');
+    if (data.success) loadUsers();
+  } catch(e) {
+    showToast('تعذر الاتصال بالخادم', 'error');
+  }
+});
+document.getElementById('del-user-modal')?.addEventListener('click', function(e) { if(e.target===this) closeDelUser(); });
+document.getElementById('edit-user-modal')?.addEventListener('click', function(e) { if(e.target===this) closeEditUser(); });
 
 function togglePwVisibility(inputId, btn) {
   const el = document.getElementById(inputId);

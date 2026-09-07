@@ -78,7 +78,7 @@
 {% block content %}
 <div class="topbar">
   <h1>تسجيل طالب جديد</h1>
-  <span class="badge badge-blue">{{ {'superadmin':'مدير النظام','admin':'مسؤول كلية','staff':'موظف تسجيل'}.get(role,'') }}</span>
+  <span class="badge badge-blue">{{ {'superadmin':'مدير النظام','admin':'مسؤول كلية','staff':'موظف شئون طلاب'}.get(role,'') }}</span>
 </div>
 
 <div class="content">
@@ -107,10 +107,10 @@
       </div>
       <div class="form-row">
         <div class="field">
-          <label>إيمبيل الطالب (اختياري)</label>
-          <input type="email" name="student_email" id="student_email"
+          <label>البريد الإلكتروني للطالب <span class="req">*</span></label>
+          <input type="email" name="student_email" id="student_email" required
                  placeholder="student@university.edu.eg">
-          <span style="font-size:.72rem;color:var(--muted);font-family:'Tajawal'">سيُرسل له إيمبيل تأكيد بالرقم</span>
+          <span style="font-size:.72rem;color:var(--muted);font-family:'Tajawal'">البريد إلزامي – سيُرسل له إيميل تأكيد بالبيانات وبطاقته الجامعية</span>
         </div>
       </div>
 
@@ -308,28 +308,47 @@ const toEng=s=>s.replace(/[٠-٩]/g,d=>AR[d]);
 
 // ── Live form → ID preview card ──
 function updateId(){
-  const y=document.getElementById('year').value;
-  const c=toEng(document.getElementById('code').value.trim());
-  const l=parseInt(document.getElementById('code_len').value);
-  document.getElementById('code').maxLength=l;
-  document.getElementById('code').placeholder=l+' أرقام';
-  const full=(y&&c.length===l)?y+c:'– – – – – –';
-  document.getElementById('id-display').textContent=full;
-  document.getElementById('id-badge').textContent=(y&&c.length===l)?(4+l)+' رقم':'– رقم';
-  document.getElementById('prev-id').textContent=full;
-  document.getElementById('prev-year')||0;
+  const yEl = document.getElementById('year');
+  const cEl = document.getElementById('code');
+  const lEl = document.getElementById('code_len');
+  if (!yEl || !cEl || !lEl) return;
+  const y = yEl.value;
+  const c = toEng(cEl.value.trim());
+  const l = parseInt(lEl.value);
+  cEl.maxLength = l;
+  cEl.placeholder = l + ' أرقام';
+  const full = (y && c.length === l) ? y + c : '– – – – – –';
+  const idDisp = document.getElementById('id-display');
+  if (idDisp) idDisp.textContent = full;
+  const idBadge = document.getElementById('id-badge');
+  if (idBadge) idBadge.textContent = (y && c.length === l) ? (4 + l) + ' رقم' : '– رقم';
+  const prevId = document.getElementById('prev-id');
+  if (prevId) prevId.textContent = full;
 }
-['year','code','code_len'].forEach(id=>document.getElementById(id).addEventListener('input',updateId));
-document.getElementById('code_len').addEventListener('change',updateId);
-document.getElementById('code').addEventListener('input',function(){
-  this.value=toEng(this.value).replace(/\D/g,''); updateId();
+['year','code','code_len'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateId);
 });
-document.getElementById('full_name').addEventListener('input',function(){
-  document.getElementById('prev-name').textContent=this.value||'الاسم الرباعي';
+document.getElementById('code_len')?.addEventListener('change', updateId);
+document.getElementById('code')?.addEventListener('input', function(){
+  this.value = toEng(this.value).replace(/\D/g,''); updateId();
 });
-document.getElementById('college').addEventListener('change',function(){
-  document.getElementById('prev-college').textContent=this.value||'الكلية';
+document.getElementById('full_name')?.addEventListener('input', function(){
+  const pn = document.getElementById('prev-name');
+  if (pn) pn.textContent = this.value || 'الاسم الرباعي';
 });
+const colEl = document.getElementById('college');
+if (colEl) {
+  colEl.addEventListener('change', function(){
+    const pc = document.getElementById('prev-college');
+    if (pc) pc.textContent = this.value || 'الكلية';
+  });
+}
+const lockedCol = "{{ locked_college or '' }}";
+if (lockedCol) {
+  const pc = document.getElementById('prev-college');
+  if (pc) pc.textContent = lockedCol;
+}
 
 // ══ CANVAS EDITOR ═══════════════════════════════════════════════════════
 const canvas=document.getElementById('editor-canvas');
@@ -440,6 +459,16 @@ document.getElementById('reg-form').addEventListener('submit', async function(e)
   const parts = fn.split(/\s+/).filter(Boolean);
   if (parts.length < 4) {
     showToast('الاسم يجب أن يكون رباعياً على الأقل', 'error');
+    return;
+  }
+
+  const em = (document.getElementById('student_email')?.value || '').trim();
+  if (!em) {
+    showToast('يرجى إدخال البريد الإلكتروني للطالب (إلزامي)', 'error');
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+    showToast('صيغة البريد الإلكتروني غير صحيحة', 'error');
     return;
   }
 

@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bua_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bua_db}
+      POSTGRES_USER: ${POSTGRES_USER:-bua_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bua_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bua_user} -d ${POSTGRES_DB:-bua_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bua_network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bua_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      # Connects to the db container via internal docker network
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bua_user}:${POSTGRES_PASSWORD:-bua_password}@db:5432/${POSTGRES_DB:-bua_db}
+      FLASK_ENV: production
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - uploads_data:/app/static/uploads
+    networks:
+      - bua_network
+
+volumes:
+  postgres_data:
+    name: bua_postgres_data
+  uploads_data:
+    name: bua_uploads_data
+
+networks:
+  bua_network:
+    name: bua_network

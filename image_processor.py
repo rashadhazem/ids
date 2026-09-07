@@ -10,21 +10,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from gdrive_helper import upload_to_gdrive, archive_in_gdrive, is_gdrive_configured
-
 try:
-    import cloudinary
-    import cloudinary.uploader
-
-    _CLD = bool(os.getenv("CLOUDINARY_CLOUD_NAME"))
-    if _CLD:
-        cloudinary.config(
-            cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-            api_key=os.getenv("CLOUDINARY_API_KEY"),
-            api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-        )
+    from gdrive_helper import upload_to_gdrive, archive_in_gdrive, move_student_in_gdrive, is_gdrive_configured
 except ImportError:
-    _CLD = False
+    upload_to_gdrive = lambda *a, **kw: False
+    archive_in_gdrive = lambda *a, **kw: False
+    move_student_in_gdrive = lambda *a, **kw: False
+    is_gdrive_configured = lambda: False
 
 TARGET_W = 400
 TARGET_H = 500
@@ -326,40 +318,12 @@ def save_image(
     """
     Save processed image if it contains strictly one human face.
     Local path: uploads/{year}/{college}/{student_id}.jpg
+    Also uploads directly to Google Drive.
     Returns { "path": relative_path, "url": public_url }
     """
     is_valid, msg, _ = validate_single_person(image_bytes)
     if not is_valid:
         raise ValueError(msg)
-
-    # Mirror copy backup to Google Drive if enabled
-    try:
-        if is_gdrive_configured():
-            upload_to_gdrive(image_bytes, year, college, f"{student_id}.jpg")
-    except Exception as e:
-        print(f"[GDrive] Failed to mirror: {e}")
-
-    if _CLD:
-        col_slug = _college_folder(college)
-        result = cloudinary.uploader.upload(
-            image_bytes,
-            public_id=f"badr_university/{year}/{col_slug}/{student_id}",
-            overwrite=True,
-            resource_type="image",
-            transformation=[
-                {
-                    "width": TARGET_W,
-                    "height": TARGET_H,
-                    "crop": "fill",
-                    "gravity": "face",
-                }
-            ],
-        )
-        return {
-            "path": result["secure_url"],
-            "url": result["secure_url"],
-            "cloudinary": True,
-        }
 
     year_folder = os.path.join(upload_root, year)
     os.makedirs(year_folder, exist_ok=True)
@@ -374,37 +338,21 @@ def save_image(
     with open(full_path, "wb") as f:
         f.write(image_bytes)
 
+    # Sync upload directly to Google Drive
+    try:
+        if is_gdrive_configured():
+            upload_to_gdrive(image_bytes, year, college, filename)
+    except Exception as e:
+        print(f"[GDrive] Image upload error: {e}")
+
     rel_path = os.path.relpath(full_path, os.path.join(upload_root, "..")).replace(
         "\\", "/"
     )
-    return {"path": rel_path, "url": f"/static/{rel_path}", "cloudinary": False}
-
-
-def extract_cloudinary_public_id(url: str) -> str | None:
-    if "/image/upload/" not in url:
-        return None
-    parts = url.split("/image/upload/")
-    if len(parts) < 2:
-        return None
-    path_part = parts[1]
-    # Remove version tag (e.g. v12345/) if present
-    path_part = re.sub(r"^v\d+/", "", path_part)
-    # Remove extension
-    public_id, _ = os.path.splitext(path_part)
-    return public_id
+    return {"path": rel_path, "url": f"/static/{rel_path}"}
 
 
 def _extract_year_and_college(path: str) -> tuple[str, str] | tuple[None, None]:
-    # Handles both Cloudinary secure URLs and local relative paths
-    if path.startswith("http"):
-        public_id = extract_cloudinary_public_id(path)
-        if not public_id:
-            return None, None
-        parts = public_id.split("/")
-    else:
-        parts = path.replace("\\", "/").split("/")
-    
-    # Search for a 4-digit year in parts
+    parts = path.replace("\\", "/").split("/")
     for i, part in enumerate(parts):
         if re.match(r"^\d{4}$", part):
             if i + 1 < len(parts):
@@ -416,55 +364,152 @@ def archive_old_image(
     old_rel_path: str, student_id: str, static_root: str, upload_root: str
 ) -> str | None:
     """
-    Move old image to old/ subdirectory with timestamp.
-    Returns new relative path or public_id, or None if file not found.
+    Move old image to old/ subdirectory.
+    Also archives the old photo on Google Drive.
+    Only keeps one old photo ({student_id}_old.jpg) in the old folder.
+    Returns new relative path or None if file not found.
     """
     if not old_rel_path:
         return None
 
-    # Mirror archive to Google Drive if configured
-    try:
-        if is_gdrive_configured():
-            year, college = _extract_year_and_college(old_rel_path)
-            if year and college:
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                old_filename = f"{student_id}_old_{ts}.jpg"
-                archive_in_gdrive(student_id, year, college, old_filename)
-    except Exception as e:
-        print(f"[GDrive] Failed to archive: {e}")
-
-    if old_rel_path.startswith("http"):
-        # Cloudinary archiving: rename/move the old photo on Cloudinary to old/ directory
-        public_id = extract_cloudinary_public_id(old_rel_path)
-        if not public_id:
-            return None
-        dir_name = os.path.dirname(public_id)
-        base_name = os.path.basename(public_id)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        new_public_id = f"{dir_name}/old/{base_name}_old_{ts}"
-        try:
-            cloudinary.uploader.rename(public_id, new_public_id)
-            return new_public_id
-        except Exception as e:
-            print(f"Error archiving Cloudinary image: {e}")
-            return None
     old_full_path = os.path.join(static_root, old_rel_path)
     if not os.path.exists(old_full_path):
         return None
 
-    # Create old/ subdirectory in the same directory as the image
+    year, college = _extract_year_and_college(old_rel_path)
+    old_filename = f"{student_id}_old.jpg"
+
+    # Mirror archive to Google Drive (keeps only one old photo per student)
+    try:
+        if is_gdrive_configured() and year and college:
+            archive_in_gdrive(student_id, year, college, old_filename)
+    except Exception as e:
+        print(f"[GDrive] Failed to archive old image: {e}")
+
+    # Create old/ subdirectory in the same local directory as the image
     image_dir = os.path.dirname(old_full_path)
     old_dir = os.path.join(image_dir, "old")
     os.makedirs(old_dir, exist_ok=True)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{student_id}_old_{ts}.jpg"
-    new_full_path = os.path.join(old_dir, filename)
+    new_full_path = os.path.join(old_dir, old_filename)
 
     try:
+        # Clean up any legacy or existing old photos for this student in local old/ folder
+        for fname in os.listdir(old_dir):
+            if fname.startswith(f"{student_id}_old"):
+                legacy_file = os.path.join(old_dir, fname)
+                try:
+                    os.remove(legacy_file)
+                except Exception:
+                    pass
+
         shutil.move(old_full_path, new_full_path)
         rel_path = os.path.relpath(new_full_path, static_root).replace("\\", "/")
         return rel_path
     except Exception as e:
         print(f"Error archiving image: {e}")
         return None
+
+
+def move_student_images_locally(
+    old_rel_path: str,
+    old_student_id: str,
+    old_year: str,
+    old_college: str,
+    new_student_id: str,
+    new_year: str,
+    new_college: str,
+    static_root: str,
+    upload_root: str,
+) -> str | None:
+    """
+    Move a student's active image and any old archived image from:
+      uploads/{old_year}/{old_college}/{old_student_id}.jpg
+    to:
+      uploads/{new_year}/{new_college}/{new_student_id}.jpg
+    Also moves/mirrors the move in Google Drive.
+    Returns the new relative path (e.g. 'uploads/2023/كلية_الصيدلة/2023006972.jpg') or None.
+    """
+    # 1. First trigger Google Drive move if configured
+    try:
+        if is_gdrive_configured() and old_year and old_college and new_year and new_college:
+            move_student_in_gdrive(
+                str(old_student_id),
+                str(old_year),
+                str(old_college),
+                str(new_student_id),
+                str(new_year),
+                str(new_college),
+            )
+    except Exception as e:
+        print(f"[GDrive] Failed to move student in Google Drive: {e}")
+
+    # 2. Target paths locally
+    new_col_folder = _college_folder(new_college)
+    new_dir = os.path.join(upload_root, str(new_year), new_col_folder)
+    os.makedirs(new_dir, exist_ok=True)
+    new_file_path = os.path.join(new_dir, f"{new_student_id}.jpg")
+    new_rel_path = os.path.relpath(new_file_path, static_root).replace("\\", "/")
+
+    # 3. Locate old file
+    old_full_path = os.path.join(static_root, old_rel_path) if old_rel_path else None
+    old_col_folder = _college_folder(old_college) if old_college else ""
+    fallback_old = (
+        os.path.join(upload_root, str(old_year), old_col_folder, f"{old_student_id}.jpg")
+        if old_year and old_col_folder
+        else None
+    )
+
+    src_file = None
+    if old_full_path and os.path.exists(old_full_path):
+        src_file = old_full_path
+    elif fallback_old and os.path.exists(fallback_old):
+        src_file = fallback_old
+
+    if src_file:
+        try:
+            if os.path.abspath(src_file) != os.path.abspath(new_file_path):
+                # If target already exists, remove it first
+                if os.path.exists(new_file_path):
+                    try:
+                        os.remove(new_file_path)
+                    except Exception:
+                        pass
+                shutil.move(src_file, new_file_path)
+                try:
+                    print(f"[Storage] Moved student image to {new_file_path}")
+                except Exception:
+                    pass
+        except Exception as e:
+            try:
+                print(f"Error moving student active image locally: {e}")
+            except Exception:
+                pass
+
+        # 4. Check for and move archived old photo in old/
+        src_dir = os.path.dirname(src_file)
+        old_archive_dir = os.path.join(src_dir, "old")
+        if os.path.exists(old_archive_dir):
+            old_archive_file = os.path.join(old_archive_dir, f"{old_student_id}_old.jpg")
+            if os.path.exists(old_archive_file):
+                new_archive_dir = os.path.join(new_dir, "old")
+                os.makedirs(new_archive_dir, exist_ok=True)
+                new_archive_file = os.path.join(new_archive_dir, f"{new_student_id}_old.jpg")
+                try:
+                    if os.path.exists(new_archive_file):
+                        try:
+                            os.remove(new_archive_file)
+                        except Exception:
+                            pass
+                    shutil.move(old_archive_file, new_archive_file)
+                    try:
+                        print(f"[Storage] Moved student archive image to {new_archive_file}")
+                    except Exception:
+                        pass
+                except Exception as e:
+                    try:
+                        print(f"Error moving student archived image locally: {e}")
+                    except Exception:
+                        pass
+
+    return new_rel_path

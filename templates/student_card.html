@@ -431,16 +431,20 @@
 
   <div class="card-body">
     <div class="photo-wrap">
-      <div class="photo-ring" id="photo-ring" onclick="document.getElementById('quick-upload').click()">
+      <div class="photo-ring" id="photo-ring"{% if can_edit %} onclick="document.getElementById('quick-upload').click()" style="cursor:pointer"{% else %} style="cursor:default"{% endif %}>
         <img src="{% if student.image_path.startswith('http') %}{{ student.image_path }}{% else %}/static/{{ student.image_path }}{% endif %}" alt="{{ student.full_name }}" id="card-photo">
+        {% if can_edit %}
         <div class="photo-overlay">
           <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M18.2 4H16.4L14.8 2H9.2L7.6 4H5.8C4.8 4 4 4.8 4 5.8v12.4C4 19.2 4.8 20 5.8 20h12.4c1 0 1.8-.8 1.8-1.8V5.8C20 4.8 19.2 4 18.2 4z"/></svg>
         </div>
+        {% endif %}
       </div>
       <div class="photo-status">
         <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
       </div>
+      {% if can_edit %}
       <input type="file" id="quick-upload" accept=".jpg,.jpeg" style="display:none">
+      {% endif %}
     </div>
 
     <div class="card-info">
@@ -476,14 +480,17 @@
     </svg>
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;padding:0 24px 14px">
-    {% if session.get('user_id') %}
+    {% if can_edit %}
     <button onclick="openChangePwModal()" class="logout-btn" style="cursor:pointer;font-family:'Cairo';border-color:rgba(232,184,75,.4);background:rgba(232,184,75,.15);font-size:.78rem">
       <svg style="width:14px;height:14px;fill:var(--gold2)" viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
       تغيير كلمة المرور
     </button>
-    <a class="logout-btn" href="{{ url_for('auth_logout') }}">تسجيل خروج</a>
     {% else %}
     <div></div>
+    {% endif %}
+    {% if session.get('user_id') %}
+    <a class="logout-btn" href="{{ url_for('auth_logout') }}">تسجيل خروج</a>
+    {% else %}
     <a class="logout-btn" href="{{ url_for('student_login') }}">تسجيل الدخول</a>
     {% endif %}
   </div>
@@ -510,6 +517,7 @@
   </div>
 </div>
 
+{% if can_edit %}
 <!-- ══ UPDATE PHOTO PANEL ══ -->
 <div class="update-panel">
   <h3>
@@ -548,23 +556,24 @@
     <div class="editor-tools">
       <button type="button" class="tool-btn" onclick="rotateDeg(-90)" title="تدوير يسار">
         <svg viewBox="0 0 24 24"><path d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>
-        يسار
+        90° يسار
       </button>
       <button type="button" class="tool-btn" onclick="rotateDeg(90)" title="تدوير يمين">
-        <svg viewBox="0 0 24 24"><path d="M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z"/></svg>
-        يمين
+        <svg viewBox="0 0 24 24"><path d="M15.55 5.55L11 1v4.07C7.05 5.56 4 8.92 4 13s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM18.31 16.9l1.42 1.42c.9-1.16 1.45-2.5 1.62-3.89h-2.03c-.14.87-.48 1.72-1.01 2.47zM16.89 18.43c-.75.54-1.59.88-2.46 1.03v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44z"/></svg>
+        90° يمين
       </button>
-      <button type="button" class="tool-btn" onclick="rotateDeg(180)">
-        <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
-        قلب
+      <button type="button" class="tool-btn" onclick="rotateDeg(180)" title="قلب رأسي">
+        180°
       </button>
-      <button type="button" class="tool-btn" onclick="flipH()">
-        <svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zm0 8h2v-2h-2v2zM3 5v14l7-7-7-7zm14-2v2h2V3h-2zm-4 18h2v-2h-2v2zM19 3h-2v2h2V3zm0 16v2h2v-2h-2zM15 3h-2v2h2V3z"/></svg>
+      <button type="button" class="tool-btn" id="flip-btn" onclick="toggleFlip()" title="انعكاس أفقي">
+        <svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2z"/></svg>
         انعكاس
       </button>
+      <button type="button" class="tool-btn" onclick="fitToWidth()" title="ملاءمة العرض">
+        ملاءمة
+      </button>
       <button type="button" class="tool-btn danger" onclick="resetEditor()">
-        <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05L6.64 18.36A8.98 8.98 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
-        إعادة
+        إعادة تعيين
       </button>
     </div>
 
@@ -591,6 +600,7 @@
     حفظ الصورة
   </button>
 </div>
+{% endif %}
 
 <footer>
   © 2026 – نظام القيد والتسجيل الجامعي
@@ -613,6 +623,7 @@ function toast(msg, type) {
   setTimeout(() => t.className = '', 4500);
 }
 
+{% if can_edit %}
 // ══════════════════════════════════════════════
 // IMAGE EDITOR ENGINE
 // ══════════════════════════════════════════════
@@ -638,203 +649,205 @@ function draw() {
   if(state.flipH) ctx.scale(-1, 1);
   const rad  = state.rot * Math.PI/180;
   const sin  = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
-  const fitW = canvas.width  / (img.width  * cos + img.height * sin);
-  const fitH = canvas.height / (img.width  * sin + img.height * cos);
-  const base = Math.min(fitW, fitH);
-  const s    = base * state.scale;
+  const bbW  = img.width * cos + img.height * sin;
+  const bbH  = img.width * sin + img.height * cos;
+  const s    = state.scale * Math.min(canvas.width / bbW, canvas.height / bbH);
   ctx.drawImage(img, -img.width*s/2, -img.height*s/2, img.width*s, img.height*s);
   ctx.restore();
 }
 
-function loadImageFromDataUrl(dataUrl) {
-  img = new Image();
-  img.onload = () => { initCanvas(); draw(); };
-  img.src = dataUrl;
-}
-
-// Controls
-function rotateDeg(deg) { state.rot = (state.rot + deg + 360) % 360; draw(); }
-function flipH()         { state.flipH = !state.flipH; draw(); }
-function onZoom(v)       {
-  state.scale = v / 100;
-  document.getElementById('zoom-val').textContent = v + '%';
+function rotateDeg(delta) {
+  state.rot = (state.rot + delta) % 360;
   draw();
 }
-function resetEditor()   {
+
+function toggleFlip() {
+  state.flipH = !state.flipH;
+  document.getElementById('flip-btn').classList.toggle('active', state.flipH);
+  draw();
+}
+
+function onZoom(val) {
+  state.scale = val / 100;
+  document.getElementById('zoom-val').textContent = val + '%';
+  draw();
+}
+
+function fitToWidth() {
+  if(!img) return;
+  state.scale = canvas.width / img.width;
+  state.ox = 0; state.oy = 0;
+  document.getElementById('zoom-slider').value = Math.round(state.scale * 100);
+  document.getElementById('zoom-val').textContent = Math.round(state.scale * 100) + '%';
+  draw();
+}
+
+function resetEditor() {
   state = { rot: 0, flipH: false, scale: 1, ox: 0, oy: 0 };
+  document.getElementById('flip-btn').classList.remove('active');
   document.getElementById('zoom-slider').value = 100;
   document.getElementById('zoom-val').textContent = '100%';
   draw();
 }
 
-// Drag to pan
-function getPos(e) {
-  if(e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  return { x: e.clientX, y: e.clientY };
-}
-canvas.addEventListener('mousedown',  startDrag);
-canvas.addEventListener('touchstart', startDrag, { passive: true });
-canvas.addEventListener('mousemove',  moveDrag);
-canvas.addEventListener('touchmove',  moveDrag, { passive: true });
-canvas.addEventListener('mouseup',    endDrag);
-canvas.addEventListener('touchend',   endDrag);
-canvas.addEventListener('mouseleave', endDrag);
-
-function startDrag(e) {
-  dragging = true;
-  const p = getPos(e);
-  dragStart = { x: p.x, y: p.y, ox: state.ox, oy: state.oy };
-}
-function moveDrag(e) {
+// Canvas drag events
+const wrap = document.getElementById('canvas-wrap');
+wrap.addEventListener('mousedown', e => {
+  dragging  = true;
+  dragStart = { x: e.clientX, y: e.clientY, ox: state.ox, oy: state.oy };
+});
+window.addEventListener('mousemove', e => {
   if(!dragging) return;
-  const p = getPos(e);
-  state.ox = dragStart.ox + (p.x - dragStart.x);
-  state.oy = dragStart.oy + (p.y - dragStart.y);
+  state.ox = dragStart.ox + (e.clientX - dragStart.x);
+  state.oy = dragStart.oy + (e.clientY - dragStart.y);
   draw();
-}
-function endDrag() { dragging = false; }
+});
+window.addEventListener('mouseup', () => dragging = false);
 
-// Pinch-to-zoom
-let lastPinch = 0;
-canvas.addEventListener('touchmove', e => {
-  if(e.touches.length === 2) {
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    const d  = Math.hypot(dx, dy);
-    if(lastPinch) {
-      state.scale = Math.max(.5, Math.min(3, state.scale * (d / lastPinch)));
-      const pct = Math.round(state.scale * 100);
-      document.getElementById('zoom-slider').value = pct;
-      document.getElementById('zoom-val').textContent = pct + '%';
-      draw();
-    }
-    lastPinch = d;
+// Touch drag
+wrap.addEventListener('touchstart', e => {
+  if(e.touches.length === 1) {
+    dragging  = true;
+    dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, ox: state.ox, oy: state.oy };
   }
-}, { passive: true });
-canvas.addEventListener('touchend', () => { lastPinch = 0; });
-
-// Wheel zoom
-canvas.addEventListener('wheel', e => {
-  e.preventDefault();
-  state.scale = Math.max(.5, Math.min(3, state.scale * (e.deltaY < 0 ? 1.08 : 0.93)));
-  const pct = Math.round(state.scale * 100);
-  document.getElementById('zoom-slider').value = pct;
-  document.getElementById('zoom-val').textContent = pct + '%';
+}, {passive: true});
+window.addEventListener('touchmove', e => {
+  if(!dragging || e.touches.length !== 1) return;
+  state.ox = dragStart.ox + (e.touches[0].clientX - dragStart.x);
+  state.oy = dragStart.oy + (e.touches[0].clientY - dragStart.y);
   draw();
-}, { passive: false });
+}, {passive: true});
+window.addEventListener('touchend', () => dragging = false);
 
-// Export edited canvas → Blob → File
-function exportBlob() {
-  return new Promise(resolve => {
-    // render at 800×800 for upload
-    const out = document.createElement('canvas');
-    out.width = out.height = 800;
-    const oc  = out.getContext('2d');
-    const cw  = canvas.width, ch = canvas.height;
-    // same transform as draw() but on 800×800
-    oc.translate(400 + state.ox * (800/cw), 400 + state.oy * (800/ch));
-    oc.rotate(state.rot * Math.PI/180);
-    if(state.flipH) oc.scale(-1, 1);
-    const rad  = state.rot * Math.PI/180;
-    const sin  = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
-    const fitW = cw  / (img.width  * cos + img.height * sin);
-    const fitH = ch  / (img.width  * sin + img.height * cos);
-    const base = Math.min(fitW, fitH);
-    const s    = base * state.scale * (800/cw);
-    oc.drawImage(img, -img.width*s/2, -img.height*s/2, img.width*s, img.height*s);
-    out.toBlob(resolve, 'image/jpeg', 0.92);
-  });
-}
+// Mouse wheel zoom
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 5 : -5;
+  const cur   = parseInt(document.getElementById('zoom-slider').value, 10);
+  const next  = Math.min(300, Math.max(50, cur + delta));
+  document.getElementById('zoom-slider').value = next;
+  onZoom(next);
+}, {passive: false});
 
-// ── File input ──
-let originalDataUrl = null;
-document.getElementById('new-photo-input').addEventListener('change', function() {
-  const file = this.files[0];
+// File input handlers
+function loadFile(file) {
   if(!file) return;
+  if(!file.type.match(/^image\/(jpeg|jpg)$/)) {
+    toast('يُسمح فقط بصور JPG / JPEG', 'error');
+    return;
+  }
+  if(file.size > 5 * 1024 * 1024) {
+    toast('حجم الصورة يتجاوز الحد المسموح (5 MB)', 'error');
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = e => {
-    originalDataUrl = e.target.result;
-    resetEditor();
-    loadImageFromDataUrl(originalDataUrl);
-    document.getElementById('up-zone').style.display    = 'none';
-    document.getElementById('editor-wrap').classList.add('show');
-    document.getElementById('update-btn').disabled = false;
+    img = new Image();
+    img.onload = () => {
+      resetEditor();
+      initCanvas();
+      draw();
+      document.getElementById('editor-wrap').classList.add('show');
+      document.getElementById('update-btn').disabled = false;
+      document.getElementById('up-zone').style.display = 'none';
+    };
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+document.getElementById('new-photo-input').addEventListener('change', e => {
+  loadFile(e.target.files[0]);
+});
+document.getElementById('quick-upload').addEventListener('change', e => {
+  loadFile(e.target.files[0]);
 });
 
-// Quick upload from card photo
-document.getElementById('quick-upload').addEventListener('change', function() {
-  if(!this.files[0]) return;
-  const dt = new DataTransfer(); dt.items.add(this.files[0]);
-  document.getElementById('new-photo-input').files = dt.files;
-  document.getElementById('new-photo-input').dispatchEvent(new Event('change'));
-  document.getElementById('up-zone').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+// Drag & drop on upload zone
+const zone = document.getElementById('up-zone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  loadFile(e.dataTransfer.files[0]);
 });
+zone.addEventListener('click', () => document.getElementById('new-photo-input').click());
 
-// Drag & drop on zone
-const uz = document.getElementById('up-zone');
-uz.addEventListener('dragover',  e => { e.preventDefault(); uz.classList.add('drag-over'); });
-uz.addEventListener('dragleave', () => uz.classList.remove('drag-over'));
-uz.addEventListener('drop', e => {
-  e.preventDefault(); uz.classList.remove('drag-over');
-  const f = e.dataTransfer.files[0];
-  if(!f) return;
-  const dt = new DataTransfer(); dt.items.add(f);
-  document.getElementById('new-photo-input').files = dt.files;
-  document.getElementById('new-photo-input').dispatchEvent(new Event('change'));
-});
-
-// ── Save ──
+// Save updated photo
 document.getElementById('update-btn').addEventListener('click', async function() {
   if(!img) return;
-  const origInnerHTML = this.innerHTML;
-  this.disabled = true;
-  this.innerHTML = `<svg style="width:18px;height:18px;fill:currentColor;animation:spin .7s linear infinite" viewBox="0 0 24 24"><path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z"/></svg> جارٍ الحفظ…`;
+
+  const btn = this;
+  const origInnerHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `
+    <svg viewBox="0 0 24 24" style="animation:spin .8s linear infinite"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+    جارٍ المعالجة والتحقق…
+  `;
 
   try {
-    const blob = await exportBlob();
-    const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-    const fd   = new FormData(); fd.append('image', file);
+    const rawFile = document.getElementById('new-photo-input').files[0]
+                 || document.getElementById('quick-upload').files[0];
+
+    const formData = new FormData();
+    formData.append('image', rawFile);
+    formData.append('rotation', state.rot);
+    formData.append('flip_h', state.flipH ? '1' : '0');
+    formData.append('zoom', state.scale);
+    formData.append('offset_x', state.ox);
+    formData.append('offset_y', state.oy);
+    formData.append('auto_crop', '0');
+
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const res  = await fetch(`/student/${STUDENT_ID}/update-photo`, {
+    const res = await fetch(`/student/${STUDENT_ID}/update-photo`, {
       method: 'POST',
-      body: fd,
       headers: {
         'X-CSRFToken': csrfToken
-      }
+      },
+      body: formData
     });
+
     const data = await res.json();
 
     if(data.success) {
-      document.getElementById('card-photo').src = data.new_url + '?t=' + Date.now();
-      if(data.old_url) {
-        document.getElementById('old-photo').src         = data.old_url + '?t=' + Date.now();
-        document.getElementById('new-photo-compare').src = data.new_url + '?t=' + Date.now();
-        document.getElementById('compare').classList.add('show');
-      }
       toast(data.message, 'success');
+
+      // Update card photo
+      const cardPhoto = document.getElementById('card-photo');
+      const oldSrc    = cardPhoto.src;
+      cardPhoto.src   = data.url + '?t=' + Date.now();
+
+      // Show comparison
+      document.getElementById('old-photo').src         = oldSrc;
+      document.getElementById('new-photo-compare').src = data.url + '?t=' + Date.now();
+      document.getElementById('compare').classList.add('show');
+
       // Reset editor
-      img = null; originalDataUrl = null;
-      document.getElementById('editor-wrap').classList.remove('show');
-      document.getElementById('up-zone').style.display = '';
       document.getElementById('new-photo-input').value = '';
       document.getElementById('quick-upload').value    = '';
-      this.disabled = true;
+      document.getElementById('editor-wrap').classList.remove('show');
+      document.getElementById('up-zone').style.display = '';
+      img = null;
+
+      // Scroll to comparison
+      document.getElementById('compare').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } else {
-      toast(data.message, 'error');
+      toast(data.message || 'فشل تحديث الصورة', 'error');
     }
-  } catch(e) {
-    toast('حدث خطأ أثناء الرفع', 'error');
+  } catch(err) {
+    toast('تعذر الاتصال بالخادم. حاول مجدداً.', 'error');
   }
 
-  this.disabled = !img;
-  this.innerHTML = origInnerHTML;
+  btn.disabled = !img;
+  btn.innerHTML = origInnerHTML;
 });
 
 // init canvas size on load
 window.addEventListener('load', initCanvas);
 window.addEventListener('resize', () => { initCanvas(); draw(); });
+{% endif %}
 
 // ── Change Password Modal Handlers ──
 function openChangePwModal() {
@@ -858,21 +871,21 @@ function togglePwVisibility(inputId, btn) {
   const el = document.getElementById(inputId);
   if (!el) return;
   el.type = el.type === 'password' ? 'text' : 'password';
-  if (btn) btn.textContent = el.type === 'password' ? '👁' : '🔒';
+  btn.textContent = el.type === 'password' ? '👁' : '🔒';
 }
 
 async function submitChangePassword() {
-  const curPw  = document.getElementById('cp-cur-pw').value.trim();
-  const newPw  = document.getElementById('cp-new-pw').value.trim();
-  const newPw2 = document.getElementById('cp-new-pw2').value.trim();
-  const msg    = document.getElementById('cp-msg');
-  const btn    = document.getElementById('cp-submit-btn');
+  const curPw = document.getElementById('cp-cur-pw').value;
+  const newPw = document.getElementById('cp-new-pw').value;
+  const newPw2 = document.getElementById('cp-new-pw2').value;
+  const msg = document.getElementById('cp-msg');
+  const btn = document.getElementById('cp-submit-btn');
 
-  if (!curPw) {
+  if (!curPw || !newPw || !newPw2) {
     msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
-    msg.textContent = 'يرجى إدخال كلمة المرور الحالية'; return;
+    msg.textContent = 'يرجى ملء جميع الحقول المطلوبة'; return;
   }
-  if (!newPw || newPw.length < 8) {
+  if (newPw.length < 8) {
     msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
     msg.textContent = 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل'; return;
   }
@@ -880,15 +893,10 @@ async function submitChangePassword() {
     msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
     msg.textContent = 'كلمتا المرور الجديدتان غير متطابقتين'; return;
   }
-  if (curPw === newPw) {
-    msg.style.display = 'block'; msg.style.color = '#fc8181'; msg.style.background = 'rgba(197,48,48,.15)';
-    msg.textContent = 'كلمة المرور الجديدة يجب أن تختلف عن الحالية'; return;
-  }
 
   btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
   try {
-    const metaCsrf = document.querySelector('meta[name="csrf-token"]');
-    const token = metaCsrf ? metaCsrf.getAttribute('content') : '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const res = await fetch('/auth/change-password', {
       method: 'POST',
       headers: {

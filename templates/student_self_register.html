@@ -5,16 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>تسجيل بياناتك – نظام القيد</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *,
 *::before,
 *::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Cairo'
-,sans-serif;
+body{font-family:'Cairo',sans-serif;
   background:linear-gradient(135deg,#0a1628 0%,#1a3a6b 50%,#0a1628 100%);
   min-height:100vh;display:flex;flex-direction:column;align-items:center;
-  justify-content:flex-start;padding:30px 16px 50px;gap:20px}
+  justify-content:flex-start;padding:24px 16px 50px;gap:18px}
 body::before{content:'';position:fixed;inset:0;
   background:radial-gradient(ellipse at 20% 50%,rgba(200,148,26,.08) 0%,transparent 55%);
   pointer-events:none}
@@ -28,64 +27,70 @@ body::before{content:'';position:fixed;inset:0;
   display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .welcome-icon svg{width:24px;height:24px;fill:#e8b84b}
 .welcome-text h2{font-size:.95rem;font-weight:700;color:#e8b84b}
-.welcome-text p{font-size:.78rem;color:rgba(255,255,255,.5);font-family:'Tajawal';margin-top:2px}
+.welcome-text p{font-size:.78rem;color:rgba(255,255,255,.65);font-family:'Tajawal';margin-top:2px}
 
-/* Card */
+.logout-row{position:relative;z-index:1;width:100%;max-width:620px;display:flex;justify-content:flex-end}
+.logout-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px;border-radius:10px;border:1px solid rgba(232,184,75,.35);background:rgba(232,184,75,.1);color:#fff;font-weight:600;font-size:.78rem;text-decoration:none;transition:all .2s}
+.logout-btn:hover{background:rgba(232,184,75,.2)}
+
+/* Main Card */
 .card{position:relative;z-index:1;width:100%;max-width:620px;
   background:#fff;border-radius:18px;overflow:hidden;
   box-shadow:0 16px 60px rgba(0,0,0,.35)}
 .card-header{background:linear-gradient(135deg,#0d1f3c,#1a3a6b);padding:22px 26px;
-  display:flex;align-items:center;gap:12px}
-.card-header svg{width:22px;height:22px;fill:#e8b84b;flex-shrink:0}
-.card-header h1{color:#fff;font-size:1rem;font-weight:700}
-.card-header span{color:rgba(255,255,255,.45);font-size:.78rem;font-family:'Tajawal';display:block;margin-top:2px}
+  display:flex;align-items:center;gap:14px}
+.card-header-icon{width:42px;height:42px;border-radius:12px;background:rgba(232,184,75,.15);border:1px solid rgba(232,184,75,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-header-icon svg{width:22px;height:22px;fill:#e8b84b}
+.card-header h1{color:#fff;font-size:1.05rem;font-weight:700}
+.card-header span{color:rgba(255,255,255,.6);font-size:.78rem;font-family:'Tajawal';display:block;margin-top:2px}
 .card-body{padding:24px 26px}
 
-/* Steps */
-.step-label{font-size:.68rem;font-weight:700;letter-spacing:1.2px;color:#8896b3;
-  text-transform:uppercase;margin:18px 0 10px;padding-bottom:7px;
-  border-bottom:1px solid #edf2f7;display:flex;align-items:center;gap:7px}
-.step-label::before{content:'';display:inline-block;width:3px;height:13px;
-  background:#c8941a;border-radius:2px}
+/* Verified Info Card */
+.verified-card{background:linear-gradient(135deg,#f8fafc,#f1f5f9);border:1.5px solid #dce3ef;border-radius:14px;padding:16px 18px;margin-bottom:20px;position:relative}
+.verified-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #e2e8f0}
+.verified-badge{display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;font-size:.75rem;font-weight:700;padding:4px 10px;border-radius:20px}
+.verified-badge svg{width:14px;height:14px;fill:currentColor}
+.verified-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.verified-item{background:#fff;padding:9px 12px;border-radius:9px;border:1px solid #e2e8f0}
+.verified-item label{font-size:.68rem;color:#64748b;font-weight:600;display:block;margin-bottom:2px}
+.verified-item span{font-size:.85rem;font-weight:700;color:#0f172a;display:block}
+.verified-id{font-family:'Courier New',monospace;letter-spacing:1px;color:#1a3a6b!important;direction:ltr;text-align:right}
 
-.field{margin-bottom:14px}
-label{font-size:.82rem;font-weight:600;color:#1a2744;display:block;margin-bottom:5px}
+/* Steps */
+.step-label{font-size:.8rem;font-weight:700;letter-spacing:.5px;color:#1a3a6b;
+  margin:18px 0 10px;display:flex;align-items:center;gap:8px}
+.step-label::before{content:'';display:inline-block;width:4px;height:16px;
+  background:#e8b84b;border-radius:2px}
+
+.field{margin-bottom:16px}
+label{font-size:.82rem;font-weight:600;color:#1a2744;display:block;margin-bottom:6px}
 label .req{color:#c53030}
-input,select{width:100%;padding:10px 13px;border:1.5px solid #dce3ef;border-radius:10px;
+select{width:100%;padding:11px 14px;border:1.5px solid #dce3ef;border-radius:10px;
   font-family:'Cairo';font-size:.875rem;color:#1a2744;background:#fafbfd;
   outline:none;transition:border-color .2s,box-shadow .2s;text-align:right}
-input:focus,select:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);background:#fff}
-.field-hint{font-size:.72rem;color:#8896b3;font-family:'Tajawal';margin-top:3px}
-
-/* ID fields row */
-.id-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.id-preview{background:linear-gradient(135deg,#0d1f3c,#1a3a6b);border-radius:10px;
-  padding:12px 16px;display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:18px}
-.id-preview span{color:rgba(255,255,255,.5);font-size:.72rem}
-.id-value{font-family:'Courier New',monospace;font-size:1.15rem;font-weight:700;
-  color:#e8b84b;letter-spacing:2px;direction:ltr}
+select:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);background:#fff}
+.field-hint{font-size:.72rem;color:#8896b3;font-family:'Tajawal';margin-top:4px}
 
 /* Image editor */
-.upload-zone{border:2px dashed #c8d4e8;border-radius:12px;padding:22px;
+.upload-zone{border:2px dashed #c8d4e8;border-radius:14px;padding:26px 20px;
   text-align:center;cursor:pointer;transition:all .2s;background:#fafbfd;position:relative}
 .upload-zone:hover,.upload-zone.drag{border-color:#1a3a6b;background:#f0f4ff}
 .upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;
   width:100%;height:100%;padding:0}
 .upload-zone p{color:#8896b3;font-size:.82rem}
 .upload-zone strong{color:#1a3a6b}
-.editor-wrap{display:none}
-.editor-wrap.show{display:block}
+
+.editor-wrap{display:none;margin-top:12px}
 .canvas-wrap{border-radius:12px;overflow:hidden;background:#0d1f3c;
   cursor:grab;touch-action:none;position:relative}
 .canvas-wrap:active{cursor:grabbing}
 #ec{display:block;width:100%}
 .crop-hint{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);
-  font-size:.65rem;color:rgba(255,255,255,.4);background:rgba(0,0,0,.4);
-  padding:3px 10px;border-radius:20px;pointer-events:none;
+  font-size:.65rem;color:rgba(255,255,255,.6);background:rgba(0,0,0,.6);
+  padding:3px 12px;border-radius:20px;pointer-events:none;
   font-family:'Tajawal';white-space:nowrap}
-.tools{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
-.tool-btn{flex:1;min-width:52px;padding:7px 5px;border:1px solid #dce3ef;
+.tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.tool-btn{flex:1;min-width:52px;padding:8px 6px;border:1px solid #dce3ef;
   border-radius:8px;background:#fff;color:#1a3a6b;cursor:pointer;
   font-size:.72rem;font-weight:700;font-family:'Cairo';
   display:flex;align-items:center;justify-content:center;gap:4px;transition:all .12s}
@@ -93,75 +98,50 @@ input:focus,select:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,10
 .tool-btn svg{width:13px;height:13px;fill:currentColor}
 .tool-btn.red{color:#c53030;border-color:rgba(197,48,48,.25)}
 .tool-btn.red:hover{background:rgba(197,48,48,.06)}
-.zoom-row{display:flex;align-items:center;gap:8px;margin-top:8px}
-.zoom-row svg{width:13px;height:13px;fill:#8896b3;flex-shrink:0}
+.zoom-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.zoom-row svg{width:14px;height:14px;fill:#8896b3;flex-shrink:0}
 .zoom-row input[type=range]{flex:1;accent-color:#e8b84b;cursor:pointer}
 .zoom-val{font-size:.72rem;color:#8896b3;min-width:36px;direction:ltr;font-family:'Courier New'}
-.autocrop-row{display:flex;align-items:center;gap:8px;margin-top:8px;
-  padding:8px 11px;background:#f0f4f9;border-radius:8px}
-.autocrop-row label{font-size:.78rem;color:#1a2744;font-weight:500;cursor:pointer}
-.autocrop-row input[type=checkbox]{accent-color:#1a3a6b;width:15px;height:15px;cursor:pointer}
+.autocrop-row{display:flex;align-items:center;gap:8px;margin-top:10px;
+  padding:9px 12px;background:#f0f4f9;border-radius:8px}
+.autocrop-row label{font-size:.78rem;color:#1a2744;font-weight:600;cursor:pointer;margin:0}
+.autocrop-row input[type=checkbox]{accent-color:#1a3a6b;width:16px;height:16px;cursor:pointer}
 
 /* Preview card */
-.preview-card{background:linear-gradient(155deg,#0d1f3c,#1a3a6b);border-radius:13px;
-  overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-top:13px;position:relative}
+.preview-card{background:linear-gradient(155deg,#0d1f3c,#1a3a6b);border-radius:14px;
+  overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-top:16px;position:relative}
 .preview-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
   background:linear-gradient(90deg,#c8941a,#e8b84b,#c8941a)}
-.pc-inner{padding:13px;display:flex;align-items:center;gap:11px}
-.pc-thumb{width:56px;height:70px;border-radius:9px;
-  border:2px solid rgba(232,184,75,.4);overflow:hidden;
-  background:rgba(255,255,255,.06);flex-shrink:0}
+.pc-inner{padding:14px;display:flex;align-items:center;gap:14px}
+.pc-thumb{width:60px;height:75px;border-radius:10px;
+  border:2px solid rgba(232,184,75,.5);overflow:hidden;
+  background:rgba(255,255,255,.08);flex-shrink:0}
 #pc-img{width:100%;height:100%;object-fit:cover;display:block}
-.pc-name{font-size:.82rem;font-weight:700;color:#fff;margin-bottom:5px;
+.pc-name{font-size:.9rem;font-weight:700;color:#fff;margin-bottom:4px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pc-row{display:flex;align-items:center;gap:5px;margin-bottom:2px}
-.pc-row svg{width:10px;height:10px;fill:#e8b84b;opacity:.8}
-.pc-row span{font-size:.68rem;color:rgba(255,255,255,.5);font-family:'Tajawal'}
-.pc-id{font-family:'Courier New',monospace;font-size:.82rem;font-weight:700;
-  color:#e8b84b;letter-spacing:2px;direction:ltr;margin-top:5px}
+.pc-row{display:flex;align-items:center;gap:5px;margin-bottom:4px}
+.pc-row svg{width:11px;height:11px;fill:#e8b84b;opacity:.9}
+.pc-row span{font-size:.72rem;color:rgba(255,255,255,.65);font-family:'Tajawal'}
+.pc-id{font-family:'Courier New',monospace;font-size:.85rem;font-weight:700;
+  color:#e8b84b;letter-spacing:2px;direction:ltr;margin-top:3px}
 
-/* Submit */
+/* Submit Button */
 .btn-submit{width:100%;padding:14px;
   background:linear-gradient(135deg,#0d1f3c,#1a3a6b);
-  color:#fff;border:none;border-radius:10px;font-size:.95rem;font-weight:700;
-  font-family:'Cairo';cursor:pointer;transition:all .18s;margin-top:6px;
-  display:flex;align-items:center;justify-content:center;gap:9px}
-.btn-submit:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 20px rgba(13,31,60,.35)}
+  color:#fff;border:none;border-radius:12px;font-size:.95rem;font-weight:700;
+  font-family:'Cairo';cursor:pointer;transition:all .18s;margin-top:10px;
+  display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 4px 15px rgba(13,31,60,.25)}
+.btn-submit:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 20px rgba(13,31,60,.35)}
 .btn-submit:disabled{opacity:.55;cursor:not-allowed;transform:none}
-.logout-row{margin-top:16px;display:flex;justify-content:flex-end}
-.logout-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:12px;border:1px solid rgba(232,184,75,.35);background:rgba(232,184,75,.12);color:#fff;font-weight:700;text-decoration:none;transition:all .2s}
-.logout-btn:hover{background:rgba(232,184,75,.25)}
 .spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.3);
   border-top-color:#fff;border-radius:50%;animation:rot .65s linear infinite;display:none}
 @keyframes rot{to{transform:rotate(360deg)}}
 
-/* Duplicate modal */
-.dup-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
-  z-index:500;align-items:center;justify-content:center}
-.dup-modal.open{display:flex}
-.dup-box{background:#fff;border-radius:16px;padding:28px;max-width:400px;
-  width:90%;text-align:center;animation:mIn .25s ease}
-@keyframes mIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
-.dup-box h3{font-size:1rem;font-weight:700;margin-bottom:8px;color:#1a2744}
-.dup-box p{font-size:.85rem;color:#6b7a99;font-family:'Tajawal'}
-.dup-actions{display:flex;gap:10px;margin-top:20px}
-.btn-cancel{flex:1;padding:10px;border:1.5px solid #dce3ef;background:#fff;
-  border-radius:9px;font-family:'Cairo';font-size:.875rem;cursor:pointer}
-.btn-update{flex:1;padding:10px;background:linear-gradient(135deg,#c8941a,#e8b84b);
-  color:#0d1f3c;border:none;border-radius:9px;font-family:'Cairo';
-  font-size:.875rem;font-weight:900;cursor:pointer}
-
-/* Warning/Notice Box */
-.notice-box{background:rgba(139,92,246,.08);border:1.5px solid rgba(139,92,246,.25);
-  border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start}
-.notice-box-icon{width:32px;height:32px;background:rgba(139,92,246,.15);border-radius:9px;
-  display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.notice-box-icon svg{width:18px;height:18px;fill:#8b5cf6}
-.notice-box-content{flex:1}
-.notice-box-title{font-size:.82rem;font-weight:700;color:#1a2744;margin-bottom:6px}
-.notice-box-text{font-size:.78rem;color:#6b7a99;line-height:1.45;font-family:'Tajawal'}
-.notice-box-list{margin-top:8px;padding-left:20px}
-.notice-box-list li{font-size:.75rem;color:#6b7a99;margin-bottom:4px;font-family:'Tajawal';line-height:1.4}
+/* Photo Requirements Notice */
+.notice-box{background:rgba(26,58,107,.04);border:1.5px solid #dce3ef;
+  border-radius:12px;padding:12px 15px;margin-bottom:14px;display:flex;gap:10px;align-items:center}
+.notice-box svg{width:20px;height:20px;fill:#1a3a6b;flex-shrink:0}
+.notice-box p{font-size:.76rem;color:#475569;font-family:'Tajawal';line-height:1.4}
 
 /* Toast */
 #toast{position:fixed;top:20px;left:50%;
@@ -172,17 +152,32 @@ input:focus,select:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,10
   transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .4s;
   opacity:0;font-family:'Cairo'}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-#toast.success{background:#1a7f3c;color:#fff}
-#toast.error{background:#c53030;color:#fff}
-#toast.warn{background:#b45309;color:#fff}
+#toast.success{background:#16a34a;color:#fff}
+#toast.error{background:#dc2626;color:#fff}
+#toast.warn{background:#d97706;color:#fff}
 #toast svg{width:17px;height:17px;fill:currentColor;flex-shrink:0}
 
-footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
+/* Duplicate modal */
+.dup-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
+  z-index:500;align-items:center;justify-content:center}
+.dup-modal.open{display:flex}
+.dup-box{background:#fff;border-radius:16px;padding:26px;max-width:400px;
+  width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.dup-box h3{font-size:1rem;font-weight:700;margin-bottom:8px;color:#1a2744}
+.dup-box p{font-size:.85rem;color:#6b7a99;font-family:'Tajawal'}
+.dup-actions{display:flex;gap:10px;margin-top:18px}
+.btn-cancel{flex:1;padding:10px;border:1.5px solid #dce3ef;background:#fff;
+  border-radius:9px;font-family:'Cairo';font-size:.875rem;cursor:pointer}
+.btn-update{flex:1;padding:10px;background:linear-gradient(135deg,#c8941a,#e8b84b);
+  color:#0d1f3c;border:none;border-radius:9px;font-family:'Cairo';
+  font-size:.875rem;font-weight:900;cursor:pointer}
+
+footer{position:relative;z-index:1;color:rgba(255,255,255,.3);
   font-size:.72rem;font-family:'Tajawal';text-align:center}
 
 @media(max-width:560px){
-  .id-row{grid-template-columns:1fr 1fr}
   .card-body{padding:18px}
+  .verified-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -194,29 +189,74 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
 <div class="welcome">
   <div class="welcome-icon">
     <svg viewBox="0 0 24 24">
-      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+    </svg>
   </div>
   <div class="welcome-text">
-    <h2>أهلاً، {{ user_name }}</h2>
-    <p>سجّل بياناتك وصورتك الشخصية للحصول على بطاقة هويتك الجامعية</p>
+    <h2>مرحباً، {{ user_name }}</h2>
+    <p>تم استخراج بياناتك الجامعية بنجاح. اختر كليتك وارفع صورتك للحصول على البطاقة.</p>
   </div>
 </div>
 
 <div class="logout-row">
-  <a class="logout-btn" href="{{ url_for('auth_logout') }}">تسجيل خروج</a>
+  <a class="logout-btn" href="{{ url_for('auth_logout') }}">
+    <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24">
+      <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+    </svg>
+    تسجيل خروج
+  </a>
 </div>
 
 <!-- Main form card -->
 <div class="card">
   <div class="card-header">
-    <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+    <div class="card-header-icon">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+    </div>
     <div>
-      <h1>استمارة القيد والتسجيل</h1>
-      <span>أدخل بياناتك الصحيحة — لا يمكن التعديل لاحقاً</span>
+      <h1>استكمال بيانات القيد والبطاقة الجامعية</h1>
+      <span>فقط اختر الكلية والتقط صورتك الشخصية</span>
     </div>
   </div>
+
   <div class="card-body">
+    <!-- Verified Student Credentials Card -->
+    <div class="verified-card">
+      <div class="verified-head">
+        <span style="font-size:.82rem;font-weight:700;color:#0d1f3c">بيانات الطالب الجامعية المعتمدة</span>
+        <span class="verified-badge">
+          <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+          تم التحقق تلقائياً
+        </span>
+      </div>
+      <div class="verified-grid">
+        <div class="verified-item">
+          <label>اسم الطالب الكامل</label>
+          <span>{{ user_name }}</span>
+        </div>
+        <div class="verified-item">
+          <label>الرقم الجامعي / الكود</label>
+          <span class="verified-id">{{ student_id or '–' }}</span>
+        </div>
+        <div class="verified-item">
+          <label>سنة القيد</label>
+          <span>{{ student_year or '–' }}</span>
+        </div>
+        <div class="verified-item">
+          <label>البريد الجامعي</label>
+          <span style="font-size:.78rem;direction:ltr;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ user_email }}</span>
+        </div>
+      </div>
+    </div>
+
     <form id="reg-form" enctype="multipart/form-data" novalidate>
+      <!-- Hidden Identity Inputs -->
+      <input type="hidden" name="full_name" id="full_name" value="{{ user_name }}">
+      <input type="hidden" name="student_id" id="student_id_input" value="{{ student_id }}">
+      <input type="hidden" name="year" id="year" value="{{ student_year }}">
+      <input type="hidden" name="code" id="code" value="{{ student_code }}">
+
+      <!-- Hidden Crop/Edit Parameters -->
       <input type="hidden" name="rotation"  id="h-rot"  value="0">
       <input type="hidden" name="flip_h"    id="h-flip" value="0">
       <input type="hidden" name="zoom"      id="h-zoom" value="1.0">
@@ -224,133 +264,108 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
       <input type="hidden" name="offset_y"  id="h-oy"   value="0.0">
       <input type="hidden" name="auto_crop" id="h-ac"   value="1">
 
-      <!-- Name -->
-      <div class="step-label">الاسم</div>
+      <!-- Step 1: College -->
+      <div class="step-label">1. الكلية المقيد بها</div>
       <div class="field">
-        <label>الاسم الرباعي كاملاً (باللغة العربية فقط) <span class="req">*</span></label>
-        <input type="text" name="full_name" id="full_name" required
-               placeholder="محمد أحمد علي حسن" autocomplete="off"
-               pattern="^[\u0621-\u064A\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
-        <p class="field-hint">مثال: محمد أحمد علي حسن (يجب أن يكون باللغة العربية فقط)</p>
-      </div>
-
-      <!-- Student ID -->
-      <div class="step-label">الرقم الجامعي</div>
-      <div class="id-row">
-        <div class="field">
-          <label>السنة <span class="req">*</span></label>
-          <select name="year" id="year">
-            <option value="">اختر</option>
-            {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label>طول الكود <span class="req">*</span></label>
-          <select id="code_len" onchange="onLenChange()">
-            <option value="6">6 أرقام</option>
-            <option value="8">8 أرقام</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>الكود <span class="req">*</span></label>
-          <input type="text" name="code" id="code" maxlength="6"
-                 inputmode="numeric" placeholder="6 أرقام" autocomplete="off">
-        </div>
-      </div>
-      <div class="id-preview">
-        <span>رقمك الجامعي الكامل</span>
-        <span class="id-value" id="id-disp">– – – – – –</span>
-      </div>
-
-      <!-- College -->
-      <div class="step-label">الكلية</div>
-      <div class="field">
-        <label>اسم الكلية <span class="req">*</span></label>
-        <select name="college" id="college">
-          <option value="">اختر الكلية</option>
+        <label>اختر كليتك <span class="req">*</span></label>
+        <select name="college" id="college" required>
+          <option value="">-- اضغط لاختيار كليتك من القائمة --</option>
           {% for c in colleges %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
         </select>
+        <p class="field-hint">اختر الكلية المسجل بها رسمياً</p>
       </div>
 
-      <!-- Photo -->
-      <div class="step-label">الصورة الشخصية</div>
-
-      <!-- Photo Requirements Notice -->
+      <!-- Step 2: Photo -->
+      <div class="step-label">2. صورتك الشخصية للبطاقة الجامعية</div>
+      
       <div class="notice-box">
-        <div class="notice-box-icon">
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-        </div>
-        <div class="notice-box-content">
-          <div class="notice-box-title">متطلبات الصورة الشخصية</div>
-          <div class="notice-box-text">
-            يجب أن تكون صورتك واضحة وعالية الجودة لضمان قبول التسجيل. الصورة المرفوضة ستؤخر عملية القيد.
-          </div>
-          <ul class="notice-box-list">
-            <li>✓ صورة شخصية واضحة وعالية الجودة</li>
-            <li>✓ الوجه مرئي بالكامل وبوضوح</li>
-            <li>✓ إضاءة جيدة وخلفية مناسبة</li>
-            <li>✗ لا تستخدم سيلفي أو صور من زوايا غير مناسبة</li>
-            <li>✗ لا تستخدم صور وجه غير واضح أو مظلم أو بعيد جداً</li>
-            <li>✗ لا تستخدم صور يكون فيها الوجه مغطى جزئياً أو غير واضح</li>
-            <li>✗ لا تستخدم صور تحتوي على أشخاص متعددين</li>
-          </ul>
-        </div>
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        <p>اختر صورة شخصية واضحة للوجه بخلفية فاتحة من جهازك. سيقوم الذكاء الاصطناعي بتوسيط وضبط وجهك تلقائياً.</p>
       </div>
 
+      <!-- Simple Upload Zone -->
       <div class="upload-zone" id="upz">
-        <input type="file" name="image" id="img-inp" accept=".jpg,.jpeg">
-        <p style="font-size:1.8rem;margin-bottom:7px">📷</p>
-        <p><strong>انقر لاختيار صورتك</strong> أو اسحبها هنا</p>
-        <p style="margin-top:5px;font-size:.72rem">JPG فقط · حد 5 MB · صورة واضحة للوجه</p>
+        <input type="file" name="image" id="img-inp" accept="image/jpeg,image/png,image/jpg">
+        <div style="width:52px;height:52px;border-radius:50%;background:rgba(26,58,107,.08);margin:0 auto 10px;display:flex;align-items:center;justify-content:center">
+          <svg style="width:26px;height:26px;fill:#1a3a6b" viewBox="0 0 24 24">
+            <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm8 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/>
+          </svg>
+        </div>
+        <p style="font-size:.95rem;font-weight:700;color:#1a3a6b;margin-bottom:4px">اضغط هنا لاختيار صورتك الشخصية من جهازك</p>
+        <p style="font-size:.74rem;color:#8896b3">JPG أو PNG · بحد أقصى 5 MB</p>
       </div>
 
+      <!-- Instant Preview Box -->
+      <div id="photo-preview-box" style="display:none;background:#f8fafc;border:1.5px solid #dce3ef;border-radius:14px;padding:16px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:16px">
+          <img id="quick-photo-thumb" src="" alt="صورتك الشخصية"
+               style="width:75px;height:95px;border-radius:10px;object-fit:cover;border:2px solid #e8b84b;box-shadow:0 4px 12px rgba(0,0,0,.08)">
+          <div style="flex:1">
+            <div style="color:#16a34a;font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:5px;margin-bottom:4px">
+              <svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+              تم اختيار الصورة بنجاح!
+            </div>
+            <p style="font-size:.74rem;color:#64748b;margin-bottom:8px">سيقوم النظام بتوسيط وجهك وضبط أبعاد الكارنيه تلقائياً.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" onclick="document.getElementById('img-inp').click()" style="padding:6px 14px;font-size:.78rem;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;font-family:'Cairo';font-weight:600">
+                🔄 تغيير الصورة
+              </button>
+              <button type="button" onclick="toggleAdvancedCrop()" style="padding:6px 14px;font-size:.78rem;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;color:#1a3a6b;font-family:'Cairo';font-weight:600">
+                ⚙️ تعديل متقدم (تدوير/تقريب)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced Editor Canvas -->
       <div class="editor-wrap" id="edwrap">
+        <div style="font-size:.82rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">أدوات التعديل اليدوي:</div>
         <div class="canvas-wrap" id="cwrap">
           <canvas id="ec" height="280"></canvas>
-          <div class="crop-hint">اسحب لتحريك · scroll للتكبير</div>
+          <div class="crop-hint">اسحب للتحريك · scroll للتكبير</div>
         </div>
         <div class="tools">
           <button type="button" class="tool-btn" onclick="rot(-90)">
-            <svg viewBox="0 0 24 24"><path d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>يسار
+            <svg viewBox="0 0 24 24"><path d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>تدوير يسار
           </button>
           <button type="button" class="tool-btn" onclick="rot(90)">
-            <svg viewBox="0 0 24 24"><path d="M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45z"/></svg>يمين
-          </button>
-          <button type="button" class="tool-btn" onclick="rot(180)">
-            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>قلب
+            <svg viewBox="0 0 24 24"><path d="M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45z"/></svg>تدوير يمين
           </button>
           <button type="button" class="tool-btn" onclick="flip()">
-            <svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zm0 8h2v-2h-2v2zM3 5v14l7-7-7-7zm14-2v2h2V3h-2z"/></svg>مرآة
+            <svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zm0 8h2v-2h-2v2zM3 5v14l7-7-7-7zm14-2v2h2V3h-2z"/></svg>عكس أفقي
           </button>
           <button type="button" class="tool-btn red" onclick="resetEd()">
-            <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05L6.64 18.36A8.98 8.98 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>إعادة
+            <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.95-2.05L6.64 18.36A8.98 8.98 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>إعادة ضبط
           </button>
-          <button type="button" onclick="document.getElementById('img-inp').click()"
-            class="tool-btn" style="border-style:dashed;color:#8896b3">تغيير</button>
         </div>
         <div class="zoom-row">
           <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/></svg>
-          <input type="range" id="zsl" min="50" max="300" value="100" step="1"
-                 oninput="onZoom(this.value)">
+          <input type="range" id="zsl" min="50" max="300" value="100" step="1" oninput="onZoom(this.value)">
           <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM7 9h5v1H7z"/></svg>
           <span class="zoom-val" id="zval">100%</span>
         </div>
         <div class="autocrop-row">
           <input type="checkbox" id="ac-chk" checked onchange="document.getElementById('h-ac').value=this.checked?'1':'0'">
-          <label for="ac-chk">قص تلقائي مُركَّز على الوجه (موصى به)</label>
+          <label for="ac-chk">تفعيل القص والتوسيط الذكي للوجه (موصى به)</label>
         </div>
-        <!-- Mini ID card preview -->
-        <div class="preview-card">
-          <div class="pc-inner">
-            <div class="pc-thumb"><img id="pc-img" src="" alt=""></div>
-            <div style="flex:1;min-width:0">
-              <div class="pc-name" id="pc-name">الاسم الرباعي</div>
-              <div class="pc-row">
-                <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
-                <span id="pc-col">الكلية</span>
-              </div>
-              <div class="pc-id" id="pc-id">– – –</div>
+      </div>
+
+      <!-- Live ID Card Preview -->
+      <div class="preview-card">
+        <div style="background:rgba(232,184,75,.15);padding:7px 14px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:.72rem;color:#e8b84b;font-weight:700">معاينة فورية لشكل البطاقة الجامعية</span>
+          <span style="font-size:.68rem;color:rgba(255,255,255,.55)">تتحدث تلقائياً مع اختيارك</span>
+        </div>
+        <div class="pc-inner">
+          <div class="pc-thumb"><img id="pc-img" src="" alt="صورة البطاقة"></div>
+          <div style="flex:1;min-width:0">
+            <div class="pc-name" id="pc-name">{{ user_name }}</div>
+            <div class="pc-row">
+              <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
+              <span id="pc-col">اختر كليتك أعلاه</span>
             </div>
+            <div class="pc-id" id="pc-id">{{ student_id or '– – – – – –' }}</div>
           </div>
         </div>
       </div>
@@ -360,7 +375,7 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
         <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24">
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
         </svg>
-        <span id="sub-txt">تسجيل بياناتي والحصول على البطاقة</span>
+        <span id="sub-txt">حفظ بياناتي واستخراج البطاقة الجامعية</span>
         <div class="spin" id="sub-spin"></div>
       </button>
     </form>
@@ -370,9 +385,9 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
 <!-- Duplicate modal -->
 <div class="dup-modal" id="dup-modal">
   <div class="dup-box">
-    <div style="width:50px;height:50px;border-radius:50%;background:rgba(200,148,26,.12);
+    <div style="width:48px;height:48px;border-radius:50%;background:rgba(200,148,26,.12);
       display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
-      <svg style="width:26px;height:26px;fill:#c8941a" viewBox="0 0 24 24">
+      <svg style="width:24px;height:24px;fill:#c8941a" viewBox="0 0 24 24">
         <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
       </svg>
     </div>
@@ -386,8 +401,8 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
     </div>
     <p style="font-size:.82rem;color:#1a2744;margin-top:8px">هل تريد تحديث الصورة؟</p>
     <div class="dup-actions">
-      <button class="btn-cancel" onclick="closeDup()">لا، إلغاء</button>
-      <button class="btn-update" id="dup-upd-btn" onclick="updateDupPhoto()">نعم، حدّث الصورة</button>
+      <button class="btn-cancel" onclick="closeDup()">إلغاء</button>
+      <button class="btn-update" id="dup-upd-btn" onclick="updateDupPhoto()">نعم، حدّث صورتي</button>
     </div>
   </div>
 </div>
@@ -395,56 +410,32 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.2);
 <footer>© 2026 – نظام القيد والتسجيل الجامعي</footer>
 
 <script>
-// ── Arabic digits ──
-const AR={'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};
-const toE=s=>s.replace(/[٠-٩]/g,d=>AR[d]);
+// ── Real-time updates ──
+document.getElementById('college').addEventListener('change', function() {
+  document.getElementById('pc-col').textContent = this.value || 'اختر كليتك أعلاه';
+});
 
-// ── Prefill student ID if available ──
-{% if prefill_sid %}
-const prefillSid = "{{ prefill_sid }}";
-if (prefillSid && prefillSid.length >= 10) {
-  const year = prefillSid.substring(0, 4);
-  const code = prefillSid.substring(4);
-  document.getElementById('year').value = year;
-  document.getElementById('code').value = code;
-  document.getElementById('code_len').value = code.length;
-  document.getElementById('code').maxLength = code.length;
-  document.getElementById('code').placeholder = code.length + ' أرقام';
-  updPreview();
+// ── Advanced Crop Toggle ──
+function toggleAdvancedCrop() {
+  const ed = document.getElementById('edwrap');
+  const isVisible = ed.style.display === 'block';
+  ed.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) {
+    initC();
+    draw();
+  }
 }
-{% endif %}
-
-// ── Live preview updates ──
-function updPreview(){
-  const y=document.getElementById('year').value;
-  const c=toE(document.getElementById('code').value.trim());
-  const l=parseInt(document.getElementById('code_len').value);
-  const full=(y&&c.length===l)?y+c:'– – – – – –';
-  document.getElementById('id-disp').textContent=full;
-  document.getElementById('pc-id').textContent=full;
-}
-function onLenChange(){
-  const l=document.getElementById('code_len').value;
-  document.getElementById('code').maxLength=l;
-  document.getElementById('code').placeholder=l+' أرقام';
-  updPreview();
-}
-document.getElementById('year').addEventListener('change',updPreview);
-document.getElementById('code').addEventListener('input',function(){
-  this.value=toE(this.value).replace(/\D/g,''); updPreview();
-});
-document.getElementById('full_name').addEventListener('input',function(){
-  document.getElementById('pc-name').textContent=this.value||'الاسم الرباعي';
-});
-document.getElementById('college').addEventListener('change',function(){
-  document.getElementById('pc-col').textContent=this.value||'الكلية';
-});
 
 // ── Canvas editor ──
 const canvas=document.getElementById('ec'),ctx=canvas.getContext('2d');
 let img=null,st={rot:0,fh:false,sc:1,ox:0,oy:0},drag={on:false},origUrl=null;
 
-function initC(){const w=document.getElementById('cwrap');canvas.width=w.clientWidth||580;canvas.height=280;}
+function initC(){
+  const w=document.getElementById('cwrap');
+  canvas.width=w.clientWidth||580;
+  canvas.height=280;
+}
+
 function draw(){
   if(!img)return;
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -458,15 +449,30 @@ function draw(){
   const z=Math.min(fw,fh)*st.sc;
   ctx.drawImage(img,-img.width*z/2,-img.height*z/2,img.width*z,img.height*z);
   ctx.restore();
-  document.getElementById('pc-img').src=canvas.toDataURL('image/jpeg',.6);
+  const thumbUrl = canvas.toDataURL('image/jpeg',.7);
+  document.getElementById('pc-img').src = thumbUrl;
+  document.getElementById('quick-photo-thumb').src = thumbUrl;
 }
+
 function rot(d){st.rot=(st.rot+d+360)%360;draw();}
 function flip(){st.fh=!st.fh;draw();}
-function onZoom(v){st.sc=v/100;document.getElementById('zval').textContent=v+'%';
-  document.getElementById('h-zoom').value=(v/100).toFixed(2);draw();}
-function resetEd(){st={rot:0,fh:false,sc:1,ox:0,oy:0};
-  document.getElementById('zsl').value=100;document.getElementById('zval').textContent='100%';
-  if(origUrl){img=new Image();img.onload=()=>draw();img.src=origUrl;}}
+function onZoom(v){
+  st.sc=v/100;
+  document.getElementById('zval').textContent=v+'%';
+  document.getElementById('h-zoom').value=(v/100).toFixed(2);
+  draw();
+}
+function resetEd(){
+  st={rot:0,fh:false,sc:1,ox:0,oy:0};
+  document.getElementById('zsl').value=100;
+  document.getElementById('zval').textContent='100%';
+  if(origUrl){
+    img=new Image();
+    img.onload=()=>draw();
+    img.src=origUrl;
+  }
+}
+
 function gp(e){return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};}
 canvas.addEventListener('mousedown',e=>{drag={on:true,...gp(e),ox:st.ox,oy:st.oy}});
 canvas.addEventListener('touchstart',e=>{const p=gp(e);drag={on:true,x:p.x,y:p.y,ox:st.ox,oy:st.oy}},{passive:true});
@@ -482,11 +488,21 @@ setInterval(()=>{document.getElementById('h-rot').value=st.rot;document.getEleme
 document.getElementById('img-inp').addEventListener('change',function(){
   const f=this.files[0];if(!f)return;
   const r=new FileReader();
-  r.onload=e=>{origUrl=e.target.result;st={rot:0,fh:false,sc:1,ox:0,oy:0};
-    document.getElementById('zsl').value=100;document.getElementById('zval').textContent='100%';
-    img=new Image();img.onload=()=>{initC();draw();};img.src=origUrl;
-    document.getElementById('upz').style.display='none';
-    document.getElementById('edwrap').classList.add('show');};
+  r.onload=e=>{
+    origUrl=e.target.result;
+    st={rot:0,fh:false,sc:1,ox:0,oy:0};
+    document.getElementById('zsl').value=100;
+    document.getElementById('zval').textContent='100%';
+    
+    document.getElementById('quick-photo-thumb').src = origUrl;
+    document.getElementById('photo-preview-box').style.display = 'block';
+    document.getElementById('upz').style.display = 'none';
+    document.getElementById('pc-img').src = origUrl;
+    
+    img=new Image();
+    img.onload=()=>{initC();draw();};
+    img.src=origUrl;
+  };
   r.readAsDataURL(f);
 });
 
@@ -539,28 +555,27 @@ async function updateDupPhoto(){
     if(data.success){toast('✅ تم تحديث صورتك بنجاح','success');setTimeout(()=>location.href=`/student/${_dupSid}`,1500);}
     else toast(data.message,'error');
   }catch(e){toast('خطأ في التحديث','error');}
-  btn.disabled=false;btn.textContent='نعم، حدّث الصورة';
+  btn.disabled=false;btn.textContent='نعم، حدّث صورتي';
 }
 
 // ── Submit ──
 document.getElementById('reg-form').addEventListener('submit',async function(e){
   e.preventDefault();
   const btn=document.getElementById('sub-btn'),sp=document.getElementById('sub-spin'),bt=document.getElementById('sub-txt');
-  
-  const fn = document.getElementById('full_name').value.trim();
-  const arRegex = /^[\u0621-\u064A\u0671\s]+$/;
-  if (!fn || !arRegex.test(fn)) {
-    toast('الاسم يجب أن يكون باللغة العربية فقط (بدون أرقام أو حروف إنجليزية)', 'error');
-    return;
-  }
-  const parts = fn.split(/\s+/).filter(Boolean);
-  if (parts.length < 4) {
-    toast('الاسم يجب أن يكون رباعياً على الأقل', 'error');
+
+  const col = document.getElementById('college').value;
+  if (!col) {
+    toast('يرجى اختيار الكلية المقيد بها من القائمة', 'error');
     return;
   }
 
-  btn.disabled=true;sp.style.display='block';bt.textContent='جارٍ التسجيل…';
-  document.getElementById('code').value=toE(document.getElementById('code').value);
+  const imgF = document.getElementById('img-inp').files[0];
+  if (!imgF) {
+    toast('يرجى التقاط أو رفع صورتك الشخصية للبطاقة', 'error');
+    return;
+  }
+
+  btn.disabled=true;sp.style.display='block';bt.textContent='جارٍ تسجيل بياناتك ورفع الصورة…';
   try{
     const fd=new FormData(this);
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -574,7 +589,7 @@ document.getElementById('reg-form').addEventListener('submit',async function(e){
     const data=await res.json();
     if(data.success){
       toast(data.message,'success');
-      setTimeout(()=>location.href=data.card_url,1200);
+      setTimeout(()=>location.href=data.card_url,1000);
     }else if(data.duplicate){
       _dupSid=data.existing_id;
       document.getElementById('dup-txt').textContent=`الطالب: ${data.existing_name} – رقم: ${data.existing_id}`;
@@ -586,7 +601,9 @@ document.getElementById('reg-form').addEventListener('submit',async function(e){
       toast(data.message,'error');
     }
   }catch(err){toast('تعذر الاتصال بالخادم','error');}
-  btn.disabled=false;sp.style.display='none';bt.textContent='تسجيل بياناتي والحصول على البطاقة';
+  finally{
+    btn.disabled=false;sp.style.display='none';bt.textContent='حفظ بياناتي واستخراج البطاقة الجامعية';
+  }
 });
 
 window.addEventListener('load',initC);

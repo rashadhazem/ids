@@ -1,4 +1,4 @@
-import os, re, secrets
+import os, re, secrets, io
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -23,7 +23,15 @@ load_dotenv()
 
 from database import get_db, init_db, COLLEGES, ROLES, log_action, ph, is_use_pg
 from image_processor import (detect_faces, apply_edits, face_detected, save_image,
-                              archive_old_image, TARGET_W, TARGET_H, validate_single_person)
+                              archive_old_image, move_student_images_locally,
+                              TARGET_W, TARGET_H, validate_single_person)
+try:
+    from gdrive_helper import upload_to_gdrive, archive_in_gdrive, upload_backup_to_gdrive, move_student_in_gdrive
+except ImportError:
+    upload_to_gdrive = lambda *a, **kw: False
+    archive_in_gdrive = lambda *a, **kw: False
+    upload_backup_to_gdrive = lambda *a, **kw: False
+    move_student_in_gdrive = lambda *a, **kw: False
 
 app = Flask(__name__)
 # Enable ProxyFix behind a reverse proxy (e.g. Nginx)
@@ -67,7 +75,7 @@ app.config["MAIL_DEFAULT_SENDER"]      = os.getenv("MAIL_DEFAULT_SENDER") or os.
 
 UPLOAD_FOLDER        = os.path.join(app.root_path, "static", "uploads")
 STATIC_ROOT          = os.path.join(app.root_path, "static")
-UNIVERSITY_DOMAIN    = os.getenv("UNIVERSITY_EMAIL_DOMAIN", "bua.edu.eg")
+UNIVERSITY_DOMAIN    = os.getenv("UNIVERSITY_EMAIL_DOMAIN", "bua.edu.eg").split("#")[0].strip()
 CURRENT_YEAR         = datetime.now().year
 YEAR_RANGE           = list(range(CURRENT_YEAR, CURRENT_YEAR - 10, -1))
 
@@ -108,7 +116,9 @@ def to_eng(s): return s.translate(ARABIC_MAP)
 
 def validate_university_email(email: str) -> bool:
     email = email.strip().lower()
-    return re.fullmatch(r"[^@\s]+@" + re.escape(UNIVERSITY_DOMAIN), email) is not None
+    valid_domains = {"bua.edu.eg", UNIVERSITY_DOMAIN.lower()}
+    domain_part = email.split("@")[-1] if "@" in email else ""
+    return domain_part in valid_domains
 
 def validate_full_name(name: str) -> tuple[bool, str]:
     name = (name or "").strip()
@@ -128,20 +138,55 @@ def validate_student_id(year: str, code: str) -> tuple[bool, str]:
     if not re.fullmatch(r"\d{6}|\d{8}", code): return False, "الكود يجب أن يكون 6 أو 8 أرقام"
     return True, ""
 
-def extract_student_id_from_email(email: str) -> str:
-    """Extract student ID from email like AbdulRahman.2023006972@bua.edu.eg"""
-    email_prefix = email.split("@")[0]
-    # Match pattern: anything.10-12digits
-    match = re.search(r'\.(\d{10,12})$', email_prefix)
+def extract_student_info_from_email(email: str) -> dict:
+    """
+    Extract student_id, year, and code from university email.
+    e.g. abdulrahman.2023006972@bua.edu.eg ->
+    {'student_id': '2023006972', 'year': '2023', 'code': '006972'}
+    """
+    if not email:
+        return {}
+    email_prefix = email.split("@")[0].strip()
+    # Match pattern: name.YYYYxxxxxx or name_YYYYxxxxxx (year 4 digits + code 6-8 digits)
+    match = re.search(r'(?:^|[\._\-])(\d{4})(\d{6,8})$', email_prefix)
     if match:
-        return match.group(1)
-    return None
+        year = match.group(1)
+        code = match.group(2)
+        return {
+            "student_id": year + code,
+            "year": year,
+            "code": code
+        }
+    # Fallback: any 10-12 digits at the end
+    match2 = re.search(r'(?:^|[\._\-])(\d{10,12})$', email_prefix)
+    if match2:
+        sid = match2.group(1)
+        return {
+            "student_id": sid,
+            "year": sid[:4],
+            "code": sid[4:]
+        }
+    return {}
+
+def extract_student_id_from_email(email: str) -> str:
+    """Extract student ID from email like abdulrahman.2023006972@bua.edu.eg"""
+    info = extract_student_info_from_email(email)
+    return info.get("student_id")
 
 def hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 
-def check_pw(pw: str, hashed: str) -> bool:
-    return bcrypt.checkpw(pw.encode(), hashed.encode())
+def check_pw(pw: str, hashed: str, plain: str = None) -> bool:
+    """Verify password: checks plain-text match first, falls back to bcrypt hash."""
+    if plain is not None and plain != "":
+        if pw == plain:
+            return True
+    if hashed:
+        try:
+            return bcrypt.checkpw(pw.encode(), hashed.encode())
+        except Exception:
+            return False
+    return False
 
 def send_email(to: str, subject: str, html: str):
     if not app.config.get("MAIL_USERNAME") or not app.config.get("MAIL_PASSWORD"):
@@ -265,7 +310,7 @@ def auth_login():
         elif not u.get("email_verified"):
             error = "يرجى تفعيل بريدك الإلكتروني أولاً"
             unverified_email = email
-        elif not check_pw(pw, u["password_hash"]):
+        elif not check_pw(pw, u["password_hash"], u.get("password_plain")):
             error = "كلمة المرور غير صحيحة"
         else:
             session.clear()
@@ -316,7 +361,7 @@ def student_login():
         elif not u.get("email_verified"):
             error = "يرجى تفعيل بريدك الإلكتروني أولاً"
             unverified_email = email
-        elif not check_pw(pw, u["password_hash"]):
+        elif not check_pw(pw, u["password_hash"], u.get("password_plain")):
             error = "كلمة المرور غير صحيحة"
         else:
             session.clear()
@@ -380,8 +425,8 @@ def auth_register():
                 hashed = hash_pw(pw)
                 # Always student role — admin creates staff/admin accounts separately
                 cur.execute(
-                    f"INSERT INTO users (email,password_hash,full_name,role,student_id,verify_token) VALUES ({','.join([ph()]*6)})",
-                    (email, hashed, full_name, "student", sid, token)
+                    f"INSERT INTO users (email,password_hash,password_plain,full_name,role,student_id,verify_token) VALUES ({','.join([ph()]*7)})",
+                    (email, hashed, pw, full_name, "student", sid, token)
                 )
                 db.commit(); db.close()
                 link = url_for("auth_verify", token=token, _external=True)
@@ -513,8 +558,8 @@ def auth_reset(token):
         else:
             hashed = hash_pw(pw)
             cur.execute(
-                f"UPDATE users SET password_hash={ph()}, reset_token=NULL, reset_expires=NULL WHERE id={ph()}",
-                (hashed, u["id"])
+                f"UPDATE users SET password_hash={ph()}, password_plain={ph()}, reset_token=NULL, reset_expires=NULL WHERE id={ph()}",
+                (hashed, pw, u["id"])
             )
             db.commit(); db.close()
             log_action(u["id"], "PASSWORD_RESET", ip=request.remote_addr)
@@ -565,12 +610,12 @@ def auth_change_password():
         db.close()
         return jsonify(success=False, message="المستخدم غير موجود"), 404
 
-    if not check_pw(cur_pw, u["password_hash"]):
+    if not check_pw(cur_pw, u.get("password_hash"), u.get("password_plain")):
         db.close()
         return jsonify(success=False, message="كلمة المرور الحالية غير صحيحة"), 400
 
     new_hashed = hash_pw(new_pw)
-    cur.execute(f"UPDATE users SET password_hash={ph()} WHERE id={ph()}", (new_hashed, uid))
+    cur.execute(f"UPDATE users SET password_hash={ph()}, password_plain={ph()} WHERE id={ph()}", (new_hashed, new_pw, uid))
     db.commit()
     db.close()
 
@@ -596,23 +641,75 @@ def dashboard():
         return redirect(url_for("student_self_register"))
 
     db  = get_db(); cur = db.cursor()
-    cur.execute("SELECT COUNT(*) AS c FROM students")
-    total = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
-    cur.execute("SELECT COUNT(DISTINCT year) AS c FROM students")
-    years = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
-    cur.execute("SELECT COUNT(DISTINCT college) AS c FROM students")
-    colleges_n = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
-    # recent audit
-    cur.execute("""SELECT a.action, a.target, a.created_at, u.full_name
-                   FROM audit_log a LEFT JOIN users u ON a.user_id=u.id
-                   ORDER BY a.created_at DESC LIMIT 10""")
-    audit = [_row_to_dict(r) for r in cur.fetchall()]
-    db.close()
-    return render_template("dashboard.html",
-        total=total, years=years, colleges_n=colleges_n,
-        audit=audit, role=session.get("role"),
-        user_name=session.get("user_name"), colleges=COLLEGES,
-        all_years=YEAR_RANGE)
+    role = session.get("role")
+    user_college = session.get("college")
+
+    if role in ("superadmin", "staff"):
+        cur.execute("SELECT COUNT(*) AS c FROM students")
+        total = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
+        cur.execute("SELECT COUNT(DISTINCT year) AS c FROM students")
+        years = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
+        cur.execute("SELECT COUNT(DISTINCT college) AS c FROM students")
+        colleges_n = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
+        cur.execute("SELECT COUNT(*) AS c FROM users WHERE role IN ('admin', 'staff')")
+        supervisors_n = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
+
+        # College distribution counts
+        cur.execute("SELECT college, COUNT(*) as count FROM students GROUP BY college ORDER BY count DESC")
+        college_counts = [_row_to_dict(r) for r in cur.fetchall()]
+
+        # Latest students across university
+        cur.execute("SELECT student_id, full_name, college, year, image_path, created_at FROM students ORDER BY created_at DESC LIMIT 8")
+        recent_students = [_row_to_dict(r) for r in cur.fetchall()]
+
+        # Recent audit:
+        # Superadmin sees all activity across all users, staff, and students
+        # Student Affairs staff only sees student-related activities
+        if role == "superadmin":
+            cur.execute("""SELECT a.action, a.target, a.created_at, u.full_name
+                           FROM audit_log a LEFT JOIN users u ON a.user_id=u.id
+                           ORDER BY a.created_at DESC LIMIT 8""")
+        else:
+            cur.execute("""SELECT a.action, a.target, a.created_at, u.full_name
+                           FROM audit_log a LEFT JOIN users u ON a.user_id=u.id
+                           WHERE a.action IN ('REGISTER_STUDENT', 'UPDATE_PHOTO', 'DELETE_STUDENT', 'EDIT_STUDENT', 'BULK_IMPORT_STUDENT', 'STUDENT_SELF_REGISTER')
+                              OR u.role = 'student'
+                           ORDER BY a.created_at DESC LIMIT 8""")
+        audit = [_row_to_dict(r) for r in cur.fetchall()]
+        db.close()
+
+        return render_template("dashboard.html",
+            total=total, years=years, colleges_n=colleges_n,
+            supervisors_n=supervisors_n, college_counts=college_counts,
+            recent_students=recent_students, audit=audit,
+            role=role, user_name=session.get("user_name"),
+            user_college=None, colleges=COLLEGES, all_years=YEAR_RANGE)
+    else:
+        # College Supervisor Dashboard
+        cur.execute(f"SELECT COUNT(*) AS c FROM students WHERE college={ph()}", (user_college,))
+        total = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
+        cur.execute(f"SELECT COUNT(DISTINCT year) AS c FROM students WHERE college={ph()}", (user_college,))
+        years = int((_row_to_dict(cur.fetchone()) or {}).get("c", 0) or 0)
+
+        # Latest students in this specific college
+        cur.execute(f"SELECT student_id, full_name, year, image_path, created_at FROM students WHERE college={ph()} ORDER BY created_at DESC LIMIT 10", (user_college,))
+        recent_students = [_row_to_dict(r) for r in cur.fetchall()]
+
+        # Recent audit for college supervisor: only student-related activities in their college or by themselves
+        cur.execute(f"""SELECT a.action, a.target, a.created_at, u.full_name
+                       FROM audit_log a LEFT JOIN users u ON a.user_id=u.id
+                       WHERE (a.action IN ('REGISTER_STUDENT', 'UPDATE_PHOTO', 'DELETE_STUDENT', 'EDIT_STUDENT', 'BULK_IMPORT_STUDENT', 'STUDENT_SELF_REGISTER') OR u.role = 'student')
+                         AND (a.user_id={ph()} OR a.target IN (SELECT student_id FROM students WHERE college={ph()}))
+                       ORDER BY a.created_at DESC LIMIT 8""", (session.get("user_id"), user_college))
+        audit = [_row_to_dict(r) for r in cur.fetchall()]
+        db.close()
+
+        return render_template("dashboard.html",
+            total=total, years=years, colleges_n=1,
+            user_college=user_college,
+            recent_students=recent_students, audit=audit,
+            role=role, user_name=session.get("user_name"),
+            colleges=COLLEGES, all_years=YEAR_RANGE)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -678,6 +775,10 @@ def register():
         if not ok: return jsonify(success=False, message=msg), 400
         ok, msg = validate_student_id(year, code)
         if not ok: return jsonify(success=False, message=msg), 400
+        if not student_email:
+            return jsonify(success=False, message="يرجى إدخال البريد الإلكتروني للطالب (إلزامي)"), 400
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", student_email):
+            return jsonify(success=False, message="صيغة البريد الإلكتروني غير صحيحة"), 400
         if college not in COLLEGES:
             return jsonify(success=False, message="اختر كلية صحيحة"), 400
 
@@ -739,6 +840,10 @@ def register():
 
         # Save
         result = save_image(processed, student_id, year, college, UPLOAD_FOLDER)
+        try:
+            upload_to_gdrive(processed, year, college, f"{student_id}.jpg")
+        except Exception as ge:
+            app.logger.warning(f"Google Drive upload skipped: {ge}")
 
         # DB insert
         db  = get_db(); cur = db.cursor()
@@ -759,16 +864,16 @@ def register():
             existing_user = cur.fetchone()
             if not existing_user:
                 cur.execute(
-                    f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
-                    (student_login_email, hashed_pw, full_name, "student",
+                    f"INSERT INTO users (email,password_hash,password_plain,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*9)})",
+                    (student_login_email, hashed_pw, student_id, full_name, "student",
                      college, student_id, True if is_use_pg() else 1, True if is_use_pg() else 1)
                 )
                 db.commit()
             else:
                 user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
                 cur.execute(
-                    f"UPDATE users SET password_hash={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
-                    (hashed_pw, student_id, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                    f"UPDATE users SET password_hash={ph()}, password_plain={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                    (hashed_pw, student_id, student_id, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
                 )
                 db.commit()
 
@@ -814,7 +919,9 @@ def student_card(student_id):
     cur.execute(f"SELECT * FROM students WHERE student_id={ph()}", (student_id,))
     row = _row_to_dict(cur.fetchone()); db.close()
     if not row: abort(404)
-    return render_template("student_card.html", student=row)
+    # The student card can ONLY be edited by the student who owns it
+    can_edit = (session.get("role") == "student" and session.get("student_id") == student_id)
+    return render_template("student_card.html", student=row, can_edit=can_edit)
 
 
 @app.route("/student/<student_id>/update-photo", methods=["POST"])
@@ -822,7 +929,7 @@ def student_card(student_id):
 def update_photo(student_id):
     student_id = to_eng(student_id.strip())
     
-    # ── Authentication and Authorization checks (V-006, V-007) ──
+    # ── Authentication and Authorization checks ──
     uid = session.get("user_id")
     if not uid:
         return jsonify(success=False, message="غير مصرح بالدخول. يرجى تسجيل الدخول أولاً"), 401
@@ -836,19 +943,11 @@ def update_photo(student_id):
 
     role = session.get("role")
     my_sid = session.get("student_id")
-    my_college = session.get("college")
     
-    if role == "student":
-        if not my_sid or my_sid != student_id:
-            db.close()
-            return jsonify(success=False, message="غير مصرح لك بتحديث هذه الصورة"), 403
-    elif role == "admin":
-        if my_college and row["college"] != my_college:
-            db.close()
-            return jsonify(success=False, message="غير مصرح لك بتعديل بيانات طالب خارج كليتك"), 403
-    elif role not in ("superadmin", "staff"):
+    # Editing photo from the student card URL is strictly restricted to the student who owns it
+    if role != "student" or not my_sid or my_sid != student_id:
         db.close()
-        return jsonify(success=False, message="غير مصرح بالدخول"), 403
+        return jsonify(success=False, message="تعديل الصورة من خلال هذه الصفحة متاح للطالب صاحب البطاقة فقط"), 403
 
     image_file = request.files.get("image")
     if not image_file or not image_file.filename.lower().endswith((".jpg",".jpeg")):
@@ -880,7 +979,7 @@ def update_photo(student_id):
         if archived_path:
             app.logger.info(f"Archived old image to: {archived_path}")
 
-        # Save new
+        # Save new (save_image automatically uploads the new photo to Google Drive)
         result = save_image(processed, student_id, row["year"], row["college"], UPLOAD_FOLDER)
 
         cur.execute(
@@ -947,15 +1046,12 @@ def admin_students():
 
 
 @app.route("/admin/delete/<int:sid>", methods=["DELETE"])
-@role_required("superadmin","admin")
+@role_required("superadmin")
 def admin_delete(sid):
     db  = get_db(); cur = db.cursor()
     cur.execute(f"SELECT * FROM students WHERE id={ph()}", (sid,))
     row = _row_to_dict(cur.fetchone())
     if not row: db.close(); return jsonify(success=False, message="غير موجود"), 404
-    # Restrict admin to own college
-    if session.get("role")=="admin" and row.get("college") != session.get("college"):
-        db.close(); return jsonify(success=False, message="ليس لديك صلاحية"), 403
     img_path = os.path.join(STATIC_ROOT, row.get("image_path",""))
     cur.execute(f"DELETE FROM students WHERE id={ph()}", (sid,))
     db.commit(); db.close()
@@ -963,11 +1059,145 @@ def admin_delete(sid):
     log_action(session.get("user_id"), "DELETE_STUDENT",
                target=row.get("student_id"), detail=row.get("full_name"),
                ip=request.remote_addr)
-    return jsonify(success=True, message="تم الحذف")
+    return jsonify(success=True, message="تم حذف الطالب بنجاح")
+
+
+@app.route("/admin/student/<int:sid>/edit", methods=["POST"])
+@role_required("superadmin", "admin", "staff")
+def admin_edit_student(sid):
+    db = get_db(); cur = db.cursor()
+    cur.execute(f"SELECT * FROM students WHERE id={ph()}", (sid,))
+    s = _row_to_dict(cur.fetchone())
+    if not s:
+        db.close()
+        return jsonify(success=False, message="الطالب غير موجود"), 404
+
+    current_role = session.get("role")
+    user_college = session.get("college")
+
+    # If supervisor (admin), can only edit students of their own college
+    if current_role == "admin" and s.get("college") != user_college:
+        db.close()
+        return jsonify(success=False, message="ليس لديك صلاحية لتعديل بيانات طالب من كلية أخرى"), 403
+
+    old_student_id = s.get("student_id")
+    old_college = s.get("college")
+    old_year = s.get("year")
+    old_name = s.get("full_name")
+    old_email = s.get("email")
+
+    image_file = request.files.get("image")
+
+    # College Supervisor (admin) can ONLY update the student's photo, NOT any other data!
+    if current_role == "admin":
+        full_name = old_name
+        email = old_email
+        college = old_college
+        year = old_year
+        new_student_id = old_student_id
+        if not (image_file and image_file.filename):
+            db.close()
+            return jsonify(success=False, message="مشرف الكلية مصرح له بتعديل الصورة الشخصية فقط. يرجى اختيار صورة جديدة."), 400
+    else:
+        # superadmin and staff can update all fields
+        full_name = request.form.get("full_name", old_name).strip()
+        email = request.form.get("email", "").strip().lower()
+        college = request.form.get("college", old_college).strip()
+        year = to_eng(request.form.get("year", old_year).strip())
+        new_student_id = to_eng(request.form.get("student_id", old_student_id).strip())
+
+        if not full_name:
+            db.close()
+            return jsonify(success=False, message="يرجى إدخال اسم الطالب الكامل"), 400
+
+        # Email is mandatory
+        if not email:
+            db.close()
+            return jsonify(success=False, message="يرجى إدخال البريد الإلكتروني للطالب (إلزامي)"), 400
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            db.close()
+            return jsonify(success=False, message="صيغة البريد الإلكتروني غير صحيحة"), 400
+
+        if college not in COLLEGES:
+            db.close()
+            return jsonify(success=False, message="الكلية المحددة غير صالحة"), 400
+
+        # If student_id changed, check uniqueness
+        if new_student_id != old_student_id:
+            cur.execute(f"SELECT id FROM students WHERE student_id={ph()} AND id!={ph()}", (new_student_id, sid))
+            if cur.fetchone():
+                db.close()
+                return jsonify(success=False, message=f"الرقم الجامعي {new_student_id} مسجل لطالب آخر بالفعل"), 409
+
+    changed_location = (college != old_college or year != old_year or new_student_id != old_student_id)
+    new_image_path = s.get("image_path")
+    if image_file and image_file.filename:
+        raw_img = image_file.read()
+        if len(raw_img) > app.config["MAX_CONTENT_LENGTH"]:
+            db.close()
+            return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
+        try:
+            processed = apply_edits(raw_img, auto_crop=True)
+            archived = archive_old_image(s.get("image_path"), old_student_id, STATIC_ROOT, UPLOAD_FOLDER)
+            res_img = save_image(processed, new_student_id, year, college, UPLOAD_FOLDER)
+            new_image_path = res_img["path"]
+            if changed_location:
+                # Remove active file in old college path if it differed
+                old_full = os.path.join(STATIC_ROOT, s.get("image_path", "")) if s.get("image_path") else ""
+                new_full = os.path.join(STATIC_ROOT, new_image_path)
+                if old_full and os.path.exists(old_full) and os.path.abspath(old_full) != os.path.abspath(new_full):
+                    try:
+                        os.remove(old_full)
+                    except Exception:
+                        pass
+                move_student_in_gdrive(old_student_id, old_year, old_college, new_student_id, year, college)
+        except Exception as e:
+            db.close()
+            return jsonify(success=False, message=f"فشل في معالجة الصورة: {e}"), 400
+    elif changed_location:
+        # Move existing active and archived images locally and on Google Drive
+        try:
+            new_image_path = move_student_images_locally(
+                old_student_id=old_student_id,
+                old_year=old_year,
+                old_college=old_college,
+                new_student_id=new_student_id,
+                new_year=year,
+                new_college=college,
+                old_rel_path=s.get("image_path"),
+                static_root=STATIC_ROOT,
+                upload_root=UPLOAD_FOLDER
+            )
+        except Exception as e:
+            print(f"Error moving student images locally / gdrive: {e}")
+
+    # Update students table
+    cur.execute(
+        f"""UPDATE students 
+            SET student_id={ph()}, full_name={ph()}, year={ph()}, college={ph()}, 
+                email={ph()}, image_path={ph()}, updated_at={ph()} 
+            WHERE id={ph()}""",
+        (new_student_id, full_name, year, college, email or None, new_image_path, datetime.utcnow().isoformat(), sid)
+    )
+
+    # Cascade update to users table so student can log in with updated ID
+    cur.execute(
+        f"UPDATE users SET student_id={ph()}, full_name={ph()}, college={ph()} WHERE student_id={ph()}",
+        (new_student_id, full_name, college, old_student_id)
+    )
+
+    db.commit()
+    db.close()
+
+    log_action(session.get("user_id"), "EDIT_STUDENT", target=new_student_id,
+               detail=f"Updated by {session.get('user_name')} (Old ID: {old_student_id}, College: {old_college} -> {college})",
+               ip=request.remote_addr)
+
+    return jsonify(success=True, message="تم حفظ وتحديث بيانات الطالب بنجاح ✓")
 
 
 @app.route("/admin/export")
-@role_required("superadmin","admin")
+@role_required("superadmin","admin","staff")
 def admin_export():
     db  = get_db(); cur = db.cursor()
     where, params = "", []
@@ -1020,7 +1250,7 @@ def admin_export():
 def admin_users():
     db  = get_db(); cur = db.cursor()
     cur.execute("""SELECT id,email,full_name,role,college,student_id,
-                          is_active,email_verified,created_at
+                          is_active,email_verified,created_at,password_plain
                    FROM users ORDER BY college NULLS LAST, role, full_name""")
     users = [_row_to_dict(r) for r in cur.fetchall()]
     db.close()
@@ -1059,8 +1289,8 @@ def admin_create_user():
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
-            f"INSERT INTO users (email,password_hash,full_name,role,college,email_verified,is_active) VALUES ({','.join([ph()]*7)})",
-            (email, hashed, full_name, role, college, 1 if not is_use_pg() else True, 1 if not is_use_pg() else True)
+            f"INSERT INTO users (email,password_hash,password_plain,full_name,role,college,email_verified,is_active) VALUES ({','.join([ph()]*8)})",
+            (email, hashed, password, full_name, role, college, 1 if not is_use_pg() else True, 1 if not is_use_pg() else True)
         )
         db.commit()
     except Exception as e:
@@ -1080,7 +1310,7 @@ def admin_create_user():
               <div style="background:#f0f4f9;padding:28px;border-radius:0 0 14px 14px">
                 <p>أهلاً <strong>{full_name}</strong>،</p>
                 <p>تم إنشاء حساب لك بدور: <strong>{ROLES.get(role, role)}</strong>.</p>
-                <p>يمكنك الآن تسجيل الدخول باستخدام بريدك الجامعي وكلمة المرور المحددة لك من قبل الإدارة.</p>
+                <p>يمكنك الآن تسجيل الدخول باستخدام بريدك الجامعي وكلمة المرور المحددة لك من قبل الإدارة: <strong>{password}</strong></p>
                 <p style="color:#6b7a99;font-size:.85rem">يمكنك تغيير كلمة مرورك في أي وقت بسهولة من داخل حسابك بعد تسجيل الدخول.</p>
               </div>
             </div>
@@ -1110,7 +1340,7 @@ def admin_reset_user_password(uid):
         return jsonify(success=False, message="المستخدم غير موجود"), 404
 
     new_hashed = hash_pw(new_pw)
-    cur.execute(f"UPDATE users SET password_hash={ph()} WHERE id={ph()}", (new_hashed, uid))
+    cur.execute(f"UPDATE users SET password_hash={ph()}, password_plain={ph()} WHERE id={ph()}", (new_hashed, new_pw, uid))
     db.commit()
     db.close()
 
@@ -1130,6 +1360,207 @@ def admin_toggle_user(uid):
     db.commit(); db.close()
     log_action(session.get("user_id"), "TOGGLE_USER", target=u["email"], ip=request.remote_addr)
     return jsonify(success=True, active=bool(new_val))
+
+
+@app.route("/admin/users/<int:uid>/edit", methods=["POST"])
+@role_required("superadmin")
+def admin_edit_user(uid):
+    data = request.get_json() if request.is_json else request.form
+    full_name = (data.get("full_name") or "").strip()
+    role = data.get("role")
+    college = data.get("college") or None
+
+    if not full_name:
+        return jsonify(success=False, message="يرجى إدخال اسم المستخدم"), 400
+    if role not in ROLES or role == "student":
+        return jsonify(success=False, message="الدور المحدد غير صالح"), 400
+
+    db = get_db(); cur = db.cursor()
+    cur.execute(f"SELECT email, role, full_name FROM users WHERE id={ph()}", (uid,))
+    u = _row_to_dict(cur.fetchone())
+    if not u:
+        db.close()
+        return jsonify(success=False, message="المستخدم غير موجود"), 404
+
+    cur.execute(
+        f"UPDATE users SET full_name={ph()}, role={ph()}, college={ph()} WHERE id={ph()}",
+        (full_name, role, college, uid)
+    )
+    db.commit()
+    db.close()
+
+    log_action(session.get("user_id"), "EDIT_USER_ROLE", target=u["email"],
+               detail=f"Updated role to {role}, College to {college}", ip=request.remote_addr)
+    return jsonify(success=True, message=f"تم تحديث صلاحيات المشرف {full_name} بنجاح ✓")
+
+
+@app.route("/admin/users/<int:uid>/delete", methods=["DELETE"])
+@role_required("superadmin")
+def admin_delete_user(uid):
+    if uid == session.get("user_id"):
+        return jsonify(success=False, message="لا يمكنك حذف حسابك الشخصي"), 400
+
+    db = get_db(); cur = db.cursor()
+    cur.execute(f"SELECT email, role, full_name FROM users WHERE id={ph()}", (uid,))
+    u = _row_to_dict(cur.fetchone())
+    if not u:
+        db.close()
+        return jsonify(success=False, message="المستخدم غير موجود"), 404
+    if u["role"] == "superadmin":
+        db.close()
+        return jsonify(success=False, message="لا يمكن حذف حساب مدير النظام الرئيسي"), 403
+
+    cur.execute(f"UPDATE audit_log SET user_id=NULL WHERE user_id={ph()}", (uid,))
+    cur.execute(f"UPDATE students SET registered_by=NULL WHERE registered_by={ph()}", (uid,))
+    cur.execute(f"DELETE FROM users WHERE id={ph()}", (uid,))
+    db.commit()
+    db.close()
+
+    log_action(session.get("user_id"), "DELETE_USER", target=u["email"],
+               detail=f"Deleted user {u['full_name']}", ip=request.remote_addr)
+    return jsonify(success=True, message=f"تم حذف حساب المستخدم {u['full_name']} بنجاح")
+
+
+def export_users_to_excel_bytes() -> bytes:
+    """Generate an Excel workbook with all users and plain-text passwords."""
+    db = get_db(); cur = db.cursor()
+    cur.execute("""SELECT id, email, full_name, role, college, student_id,
+                          password_plain, is_active, email_verified, created_at
+                   FROM users ORDER BY id ASC""")
+    users = [_row_to_dict(r) for r in cur.fetchall()]
+    db.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "المستخدمون وكلمات المرور"
+    ws.views.sheetView[0].rightToLeft = True
+
+    # Styles
+    navy_fill  = PatternFill(start_color="0D1F3C", end_color="0D1F3C", fill_type="solid")
+    zebra_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+    white_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    dark_font  = Font(name="Arial", size=10, bold=False, color="1A2744")
+    mono_font  = Font(name="Courier New", size=10, bold=True, color="0D1F3C")
+
+    thin_border = Border(
+        left=Side(style='thin', color='DCE3EF'),
+        right=Side(style='thin', color='DCE3EF'),
+        top=Side(style='thin', color='DCE3EF'),
+        bottom=Side(style='thin', color='DCE3EF')
+    )
+
+    headers = [
+        "م", "الاسم الكامل", "البريد الإلكتروني", "كلمة المرور",
+        "الرقم الجامعي", "الكلية", "نوع الحساب", "حالة الحساب",
+        "تأكيد البريد", "تاريخ التسجيل"
+    ]
+
+    ws.append(headers)
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = navy_fill
+        cell.font = white_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = thin_border
+
+    ws.row_dimensions[1].height = 28
+
+    role_map = {
+        "superadmin": "مدير رئيسي",
+        "admin": "مشرف كلية",
+        "staff": "موظف شئون طلاب",
+        "student": "طالب"
+    }
+
+    for idx, u in enumerate(users, start=2):
+        role_arabic   = role_map.get(u.get("role"), u.get("role") or "")
+        active_text   = "نشط" if u.get("is_active") else "موقوف"
+        verified_text = "مفعّل" if u.get("email_verified") else "غير مفعّل"
+        created_str   = str(u.get("created_at") or "")[:19]
+
+        row_vals = [
+            u.get("id"),
+            u.get("full_name") or "",
+            u.get("email") or "",
+            u.get("password_plain") or "",
+            u.get("student_id") or "",
+            u.get("college") or "إدارة عامة",
+            role_arabic,
+            active_text,
+            verified_text,
+            created_str
+        ]
+        ws.append(row_vals)
+
+        is_even = (idx % 2 == 0)
+        for c_idx in range(1, len(row_vals) + 1):
+            c = ws.cell(row=idx, column=c_idx)
+            c.border = thin_border
+            c.font = dark_font
+            if is_even:
+                c.fill = zebra_fill
+            if c_idx == 4:  # Password
+                c.font = mono_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            elif c_idx in (1, 5, 7, 8, 9, 10):
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                c.alignment = Alignment(horizontal="right", vertical="center")
+        ws.row_dimensions[idx].height = 22
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = col[0].column_letter
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def backup_users_to_gdrive() -> tuple[bool, str]:
+    """Export all users to an Excel spreadsheet and upload it to Google Drive backups folder."""
+    try:
+        data = export_users_to_excel_bytes()
+        ok = upload_backup_to_gdrive(data, "users_backup.xlsx")
+        if ok:
+            return True, "تم رفع النسخة الاحتياطية للمستخدمين إلى Google Drive بنجاح ✓"
+        else:
+            return False, "فشل الرفع إلى Google Drive (تأكد من تفعيل إعدادات GOOGLE_DRIVE في .env)"
+    except Exception as e:
+        app.logger.error(f"Google Drive users backup error: {e}")
+        return False, f"خطأ أثناء النسخ الاحتياطي: {str(e)}"
+
+
+@app.route("/admin/users/export-excel")
+@role_required("superadmin")
+def admin_export_users_excel():
+    """Download users list with plain passwords as Excel file."""
+    try:
+        excel_bytes = export_users_to_excel_bytes()
+        filename = f"users_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(
+            io.BytesIO(excel_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        app.logger.error(f"Error exporting users Excel: {e}")
+        return jsonify(success=False, message="حدث خطأ أثناء تصدير ملف الإكسيل"), 500
+
+
+@app.route("/admin/users/backup-gdrive", methods=["POST"])
+@role_required("superadmin")
+def admin_backup_users_gdrive():
+    """Trigger manual backup of users Excel to Google Drive."""
+    ok, msg = backup_users_to_gdrive()
+    if ok:
+        log_action(session.get("user_id"), "BACKUP_USERS_GDRIVE", detail=msg, ip=request.remote_addr)
+        return jsonify(success=True, message=msg)
+    else:
+        return jsonify(success=False, message=msg), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1234,7 +1665,7 @@ def admin_panel():
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.route("/admin/bulk-import", methods=["GET", "POST"])
-@role_required("superadmin", "admin")
+@role_required("superadmin")
 def bulk_import():
     if request.method == "GET":
         return render_template("bulk_import.html",
@@ -1301,8 +1732,8 @@ def bulk_import():
         college   = find_col(row, COL_MAP["college"]).strip()
         email     = find_col(row, COL_MAP["email"]).strip().lower()
 
-        if not sid or not full_name:
-            results["errors"].append(f"سطر {i}: رقم الطالب أو الاسم مفقود")
+        if not sid or not full_name or not email:
+            results["errors"].append(f"سطر {i}: رقم الطالب أو الاسم أو البريد الإلكتروني مفقود (البريد إلزامي)")
             results["skipped"] += 1
             continue
 
@@ -1381,16 +1812,16 @@ def bulk_import():
             existing_user = cur.fetchone()
             if not existing_user:
                 cur.execute(
-                    f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
-                    (student_login_email, hashed_pw, full_name, "student",
+                    f"INSERT INTO users (email,password_hash,password_plain,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*9)})",
+                    (student_login_email, hashed_pw, temp_pw, full_name, "student",
                      college, sid, True if is_use_pg() else 1, True if is_use_pg() else 1)   # pre-verified, active
                 )
                 db.commit()
             else:
                 user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
                 cur.execute(
-                    f"UPDATE users SET password_hash={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
-                    (hashed_pw, sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                    f"UPDATE users SET password_hash={ph()}, password_plain={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                    (hashed_pw, temp_pw, sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
                 )
                 db.commit()
 
@@ -1421,7 +1852,7 @@ def bulk_import():
 
 
 @app.route("/admin/bulk-import/template")
-@role_required("superadmin", "admin")
+@role_required("superadmin")
 def bulk_import_template():
     """Download a sample Excel template for bulk import."""
     wb = Workbook()
@@ -1508,38 +1939,69 @@ def _send_student_welcome(to: str, name: str, student_id: str,
 @app.route("/student/register", methods=["GET"])
 @login_required
 def student_self_register():
-    """Dedicated registration page for students — only their own data."""
+    """Dedicated registration page for students — only requires College & Photo."""
     if session.get("role") != "student":
         return redirect(url_for("register_form"))
 
-    sid = session.get("student_id", "")
-    # Already registered → go to card
+    uid = session.get("user_id")
+    db  = get_db(); cur = db.cursor()
+    cur.execute(f"SELECT id, email, full_name, student_id FROM users WHERE id={ph()}", (uid,))
+    u = _row_to_dict(cur.fetchone())
+
+    email     = u.get("email") or session.get("email", "")
+    full_name = u.get("full_name") or session.get("user_name", "")
+
+    stu_info = extract_student_info_from_email(email)
+    sid      = u.get("student_id") or stu_info.get("student_id") or session.get("student_id", "")
+    year     = stu_info.get("year") or (sid[:4] if len(sid) >= 4 else "")
+    code     = stu_info.get("code") or (sid[4:] if len(sid) > 4 else "")
+
+    # Auto-save extracted student_id to user record if not saved yet
+    if sid and not u.get("student_id"):
+        cur.execute(f"UPDATE users SET student_id={ph()} WHERE id={ph()}", (sid, uid))
+        db.commit()
+        session["student_id"] = sid
+
+    # Already registered in students table → go straight to card
     if sid:
-        db  = get_db(); cur = db.cursor()
         cur.execute(f"SELECT student_id FROM students WHERE student_id={ph()}", (sid,))
         if cur.fetchone():
             db.close()
             return redirect(url_for("student_card", student_id=sid))
-        db.close()
+    db.close()
 
     return render_template("student_self_register.html",
                            colleges=COLLEGES,
-                           years=YEAR_RANGE,
-                           user_name=session.get("user_name"),
-                           prefill_sid=sid)
+                           user_name=full_name,
+                           user_email=email,
+                           student_id=sid,
+                           student_year=year,
+                           student_code=code)
 
 
 @app.route("/student/register", methods=["POST"])
 @login_required
 @limiter.limit(lambda: os.getenv("LIMIT_STUDENT_REGISTER", "30 per hour"))
 def student_self_register_post():
-    """Handle student self-registration form submission."""
+    """Handle student self-registration form submission — only requires College & Photo."""
     if session.get("role") != "student":
         return jsonify(success=False, message="غير مسموح"), 403
     try:
-        full_name  = request.form.get("full_name","").strip()
-        year       = to_eng(request.form.get("year","").strip())
-        code       = to_eng(request.form.get("code","").strip())
+        uid = session.get("user_id")
+        db  = get_db(); cur = db.cursor()
+        cur.execute(f"SELECT id, email, full_name, student_id FROM users WHERE id={ph()}", (uid,))
+        u = _row_to_dict(cur.fetchone())
+        db.close()
+
+        email     = u.get("email") or session.get("email", "")
+        full_name = u.get("full_name") or session.get("user_name", "") or request.form.get("full_name","").strip()
+
+        # Extract student info automatically from email or database
+        stu_info   = extract_student_info_from_email(email)
+        student_id = u.get("student_id") or stu_info.get("student_id") or session.get("student_id") or to_eng(request.form.get("student_id","").strip())
+        year       = stu_info.get("year") or (student_id[:4] if len(student_id) >= 4 else to_eng(request.form.get("year","").strip()))
+        code       = stu_info.get("code") or (student_id[4:] if len(student_id) > 4 else to_eng(request.form.get("code","").strip()))
+
         college    = request.form.get("college","").strip()
         rotation   = int(request.form.get("rotation","0"))
         flip_h     = request.form.get("flip_h","") == "1"
@@ -1549,20 +2011,14 @@ def student_self_register_post():
         auto_crop  = request.form.get("auto_crop","1") == "1"
         image_file = request.files.get("image")
 
-        ok, msg = validate_full_name(full_name)
-        if not ok: return jsonify(success=False, message=msg), 400
-        ok, msg = validate_student_id(year, code)
-        if not ok: return jsonify(success=False, message=msg), 400
+        if not student_id or not year or not code:
+            return jsonify(success=False, message="تعذر استخراج كود الطالب وسنة القيد من البريد الجامعي"), 400
+
+        if not full_name:
+            return jsonify(success=False, message="اسم الطالب غير مسجل"), 400
+
         if college not in COLLEGES:
-            return jsonify(success=False, message="اختر كلية صحيحة"), 400
-
-        student_id = year + code
-
-        # Enforce: student can only register their own ID
-        my_sid = session.get("student_id", "")
-        if my_sid and student_id != my_sid:
-            return jsonify(success=False,
-                message=f"يمكنك تسجيل رقمك الجامعي فقط ({my_sid})"), 403
+            return jsonify(success=False, message="يرجى اختيار كليتك من القائمة"), 400
 
         # Check duplicate
         db  = get_db(); cur = db.cursor()
@@ -1581,8 +2037,8 @@ def student_self_register_post():
                 message=f"الرقم {student_id} مسجل مسبقاً باسم: {existing['full_name']}"
             ), 409
 
-        if not image_file or not image_file.filename.lower().endswith((".jpg",".jpeg")):
-            return jsonify(success=False, message="يرجى رفع صورة JPG"), 400
+        if not image_file or not image_file.filename.lower().endswith((".jpg",".jpeg",".png")):
+            return jsonify(success=False, message="يرجى التقاط أو رفع صورتك الشخصية"), 400
 
         raw = image_file.read()
         if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
@@ -1600,14 +2056,17 @@ def student_self_register_post():
             return jsonify(success=False, message=face_msg), 400
 
         result = save_image(processed, student_id, year, college, UPLOAD_FOLDER)
+        try:
+            upload_to_gdrive(processed, year, college, f"{student_id}.jpg")
+        except Exception as ge:
+            app.logger.warning(f"Google Drive self-register upload error: {ge}")
 
         db  = get_db(); cur = db.cursor()
         try:
-            uid = session.get("user_id")
             cur.execute(
                 f"INSERT INTO students (student_id,full_name,year,college,email,image_path,registered_by) VALUES ({','.join([ph()]*7)})",
                 (student_id, full_name, year, college,
-                 session.get("email"), result["path"], uid)
+                 email, result["path"], uid)
             )
             # Link student_id to user account
             cur.execute(f"UPDATE users SET student_id={ph()} WHERE id={ph()}",
@@ -1627,13 +2086,13 @@ def student_self_register_post():
         session["student_id"] = student_id
 
         return jsonify(success=True,
-            message=f"تم تسجيل بياناتك بنجاح!",
+            message="تم تسجيل بياناتك بنجاح!",
             card_url=url_for("student_card", student_id=student_id),
             image_url=result["url"]), 201
 
     except Exception:
         app.logger.exception("Student self-register error")
-        return jsonify(success=False, message="حدث خطأ داخلي"), 500
+        return jsonify(success=False, message="حدث خطأ داخلي أثناء تسجيل البيانات"), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1719,94 +2178,6 @@ def gdrive_callback():
     except Exception as e:
         return f"Connection error: {e}", 500
 
-
-# ══════════════════════════════════════════════════════════════════════════
-# ONEDRIVE OAUTH GATEWAY
-# ══════════════════════════════════════════════════════════════════════════
-
-@app.route("/admin/onedrive/auth")
-@login_required
-def onedrive_auth():
-    if session.get("role") != "superadmin":
-        abort(403)
-    
-    client_id = os.getenv("ONEDRIVE_CLIENT_ID")
-    if not client_id:
-        return "Error: ONEDRIVE_CLIENT_ID is not configured in .env", 400
-        
-    redirect_uri = f"{request.scheme}://{request.host}/admin/onedrive/callback"
-    tenant_id = os.getenv("ONEDRIVE_TENANT_ID", "common")
-    
-    auth_url = (
-        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
-        f"?client_id={client_id}"
-        f"&response_type=code"
-        f"&redirect_uri={redirect_uri}"
-        f"&response_mode=query"
-        f"&scope=Files.ReadWrite.All%20offline_access"
-    )
-    return redirect(auth_url)
-
-
-@app.route("/admin/onedrive/callback")
-@login_required
-def onedrive_callback():
-    if session.get("role") != "superadmin":
-        abort(403)
-        
-    code = request.args.get("code")
-    if not code:
-        err = request.args.get("error")
-        err_desc = request.args.get("error_description")
-        if err or err_desc:
-            return f"Microsoft OAuth Error: {err}<br>Description: {err_desc}", 400
-        return f"Error: Authorization code is missing from query string. Received query parameters: {dict(request.args)}", 400
-        
-    client_id = os.getenv("ONEDRIVE_CLIENT_ID")
-    client_secret = os.getenv("ONEDRIVE_CLIENT_SECRET")
-    tenant_id = os.getenv("ONEDRIVE_TENANT_ID", "common")
-    
-    if not client_id or not client_secret:
-        return "Error: Client ID or Client Secret is not configured in .env", 400
-        
-    redirect_uri = f"{request.scheme}://{request.host}/admin/onedrive/callback"
-    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-    
-    data = {
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "code": code,
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code",
-        "scope": "Files.ReadWrite.All offline_access"
-    }
-    
-    try:
-        import requests
-        res = requests.post(token_url, data=data, timeout=15)
-        if res.status_code == 200:
-            tokens = res.json()
-            refresh_token = tokens.get("refresh_token")
-            
-            html = f"""
-            <div dir="rtl" style="font-family:Cairo,Arial,sans-serif;max-width:600px;margin:50px auto;padding:30px;border:1px solid #dce3ef;border-radius:14px;background:#f0f4f9;box-shadow:0 8px 30px rgba(0,0,0,0.05)">
-              <h1 style="color:#2b6cb0;margin-top:0">🎉 تم الاتصال بـ Microsoft OneDrive بنجاح!</h1>
-              <p style="color:#4a5568;line-height:1.6">تم الحصول على رمز التحديث (Refresh Token) بنجاح. يرجى نسخه ووضعه في ملف <strong>.env</strong> الخاص بالتطبيق:</p>
-              
-              <div style="background:#2d3748;color:#fff;padding:16px;border-radius:8px;font-family:monospace;font-size:0.9rem;word-break:break-all;margin:20px 0;user-select:all" title="انقر لتحديد الكل">
-                ONEDRIVE_REFRESH_TOKEN={refresh_token}
-              </div>
-              
-              <p style="color:#e53e3e;font-size:0.85rem;font-weight:bold">* تنبيه: هذا الرمز سري للغاية ويسمح بالوصول لملفاتك، لا تشاركه مع أي شخص.</p>
-              <p style="color:#718096;font-size:0.8rem">بعد تعديل ملف .env، أعد تشغيل السيرفر لتفعيل مزامنة الصور تلقائياً.</p>
-              <a href="/" style="display:inline-block;margin-top:20px;padding:10px 20px;background:#3182ce;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">الذهاب للوحة التحكم</a>
-            </div>
-            """
-            return html
-        else:
-            return f"Error exchanging code: {res.status_code} - {res.text}", 400
-    except Exception as e:
-        return f"Connection error: {e}", 500
 
 
 @app.errorhandler(403)

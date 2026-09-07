@@ -192,18 +192,20 @@ footer a{color:var(--gold);text-decoration:none}
     <a href="{{ url_for('admin_panel') }}" class="sb-link {% if request.endpoint=='admin_panel' %}active{% endif %}">
       <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg> إدارة الطلاب
     </a>
-    {% if session.get('role') in ['superadmin','admin'] %}
+    {% if session.get('role') in ['superadmin','admin','staff'] %}
     <a href="{{ url_for('admin_export') }}" class="sb-link">
       <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> تصدير Excel
     </a>
+    {% endif %}
+    {% if session.get('role') == 'superadmin' %}
     <a href="{{ url_for('bulk_import') }}" class="sb-link {% if request.endpoint=='bulk_import' %}active{% endif %}">
-      <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg> استيراد دفعي
+      <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg> رفع ملف Excel
     </a>
     {% endif %}
     {% if session.get('role') == 'superadmin' %}
-    <div class="sb-section">النظام</div>
+    <div class="sb-section">إدارة النظام</div>
     <a href="{{ url_for('admin_panel') }}#users" class="sb-link">
-      <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg> إدارة المستخدمين
+      <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg> إدارة المشرفين
     </a>
     <a href="{{ url_for('admin_panel') }}#audit" class="sb-link">
       <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg> سجل العمليات
@@ -216,7 +218,7 @@ footer a{color:var(--gold);text-decoration:none}
       <div class="sb-user-info">
         <span>{{ session.get('user_name','') }}</span>
         <small>{{ session.get('email','') }}</small>
-        <span class="sb-role-badge">{{ {'superadmin':'مدير','admin':'مسؤول','staff':'موظف','student':'طالب'}.get(session.get('role',''),'') }}</span>
+        <span class="sb-role-badge">{{ {'superadmin':'المدير العام','admin':'مشرف كلية','staff':'موظف شئون طلاب','student':'طالب'}.get(session.get('role',''),'') }}</span>
       </div>
     </div>
     <button onclick="openChangePwModal()" class="btn-logout" style="background:rgba(232,184,75,.12);color:var(--gold2);border-color:rgba(232,184,75,.25);margin-bottom:6px">
@@ -231,7 +233,7 @@ footer a{color:var(--gold);text-decoration:none}
 
 <div class="main">
   {% block content %}{% endblock %}
-  <footer>© 2026 – تم التطوير بواسطة <a href="https://www.linkedin.com/in/abdelrahman-oraby-92588a2a5" target="_blank">عبدو عرابي</a></footer>
+  <footer>© 2026 – تم التطوير بواسطة <a href="https://www.linkedin.com/in/abdelrahman-oraby-92588a2a5" target="_blank"> Abdelrahman Oraby</a></footer>
 </div>
 
 <div id="toast"><svg viewBox="0 0 24 24" id="toast-icon"></svg><span id="toast-msg"></span></div>

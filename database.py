@@ -7,7 +7,7 @@ import os, sqlite3, logging, re, requests
 from datetime import datetime
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 try:
     import psycopg2
@@ -45,7 +45,7 @@ COLLEGES = [
 ROLES = {
     "superadmin": "مدير النظام",
     "admin":      "مسؤول كلية",
-    "staff":      "موظف تسجيل",
+    "staff":      "موظف شئون طلاب",
     "student":    "طالب",
 }
 
@@ -81,6 +81,7 @@ def _ensure_sqlite_initialized():
         cur  = conn.cursor()
         migrations = [
             "ALTER TABLE users ADD COLUMN student_id TEXT",
+            "ALTER TABLE users ADD COLUMN password_plain TEXT",
         ]
         for m in migrations:
             try:
@@ -105,8 +106,8 @@ def _ensure_sqlite_initialized():
         if not cur.fetchone():
             hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             cur.execute(
-                "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?)",
-                (email, hashed, name, "superadmin", 1, 1)
+                "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?,?)",
+                (email, hashed, password, name, "superadmin", 1, 1)
             )
             conn.commit()
         conn.close()
@@ -133,9 +134,16 @@ class NeonHTTPCursor:
             return f"${count}"
         neon_sql = re.sub(r"%s", repl, sql)
         payload = {"query": neon_sql}
-        if params:
-            payload["params"] = list(params)
-        res = self.conn.session.post(self.conn.endpoint, headers=self.conn.headers, json=payload, timeout=15)
+        res = None
+        for attempt in range(2):
+            try:
+                res = self.conn.session.post(self.conn.endpoint, headers=self.conn.headers, json=payload, timeout=15)
+                break
+            except Exception as e:
+                if attempt == 1:
+                    raise
+                NeonHTTPConnection._shared_session = requests.Session()
+                self.conn.session = NeonHTTPConnection._shared_session
         if res.status_code == 200:
             data = res.json()
             rows = data.get("rows", [])
@@ -216,46 +224,49 @@ _PG_PORT_BLOCKED = os.getenv("USE_NEON_HTTP", "").strip().lower() in ("true", "1
 
 # ── connection factory ─────────────────────────────────────────────────────
 def get_db(force_sqlite: bool = False):
-    global USE_PG, _PG_PORT_BLOCKED
-    if force_sqlite:
+    global USE_PG, _PG_PORT_BLOCKED, DB_URL
+    current_db_url = os.getenv("DATABASE_URL", DB_URL)
+    is_pg_active = bool(current_db_url) and HAS_PG
+    use_neon = os.getenv("USE_NEON_HTTP", "").strip().lower() in ("true", "1", "yes")
+
+    if force_sqlite or not is_pg_active:
         USE_PG = False
         _ensure_sqlite_initialized()
         return _connect_sqlite()
 
-    if USE_PG:
-        # If we know port 5432 is blocked (or configured to use HTTPS), use Neon HTTP directly
-        if _PG_PORT_BLOCKED and "neon.tech" in DB_URL.lower():
-            try:
-                return NeonHTTPConnection(DB_URL)
-            except Exception as e:
-                print(f"[WARNING] Neon HTTP connection failed: {e}")
+    USE_PG = True
 
+    # If configured to use Neon HTTP directly
+    if use_neon and "neon.tech" in current_db_url.lower():
         try:
-            conn = psycopg2.connect(
-                DB_URL,
-                connect_timeout=PG_TIMEOUT,
-                cursor_factory=psycopg2.extras.RealDictCursor
-            )
-            return conn
+            return NeonHTTPConnection(current_db_url)
         except Exception as e:
-            # If standard TCP port 5432 failed (e.g. firewall/ISP blocked), bypass via Neon HTTPS port 443!
-            if "neon.tech" in DB_URL.lower():
-                try:
-                    conn = NeonHTTPConnection(DB_URL)
-                    cur = conn.cursor()
-                    cur.execute("SELECT 1")
-                    _PG_PORT_BLOCKED = True
-                    print("[INFO] Bypassing blocked port 5432: Connected to Neon PostgreSQL via HTTPS (Port 443)!")
-                    return conn
-                except Exception as he:
-                    print(f"[WARNING] Neon HTTPS fallback failed: {he}")
+            print(f"[WARNING] Neon HTTP connection failed: {e}")
 
-            print(f"[WARNING] PostgreSQL connection failed: {e}")
-            print(f"[INFO] Automatically falling back to local SQLite database: {SQLITE_PATH}")
-            USE_PG = False
-            _ensure_sqlite_initialized()
-            return _connect_sqlite()
-    else:
+    # Standard PostgreSQL TCP connection (e.g. Docker PostgreSQL on localhost:5432 or VPS)
+    try:
+        conn = psycopg2.connect(
+            current_db_url,
+            connect_timeout=PG_TIMEOUT,
+            cursor_factory=psycopg2.extras.RealDictCursor
+        )
+        return conn
+    except Exception as e:
+        # Fallback to Neon HTTPS port 443 if standard port 5432 is blocked
+        if "neon.tech" in current_db_url.lower():
+            try:
+                conn = NeonHTTPConnection(current_db_url)
+                cur = conn.cursor()
+                cur.execute("SELECT 1")
+                print("[INFO] Bypassing blocked port 5432: Connected to Neon PostgreSQL via HTTPS (Port 443)!")
+                return conn
+            except Exception as he:
+                print(f"[WARNING] Neon HTTPS fallback failed: {he}")
+
+        print(f"[WARNING] PostgreSQL connection failed: {e}")
+        print(f"[INFO] Automatically falling back to local SQLite database: {SQLITE_PATH}")
+        USE_PG = False
+        _ensure_sqlite_initialized()
         return _connect_sqlite()
 
 
@@ -276,6 +287,7 @@ CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     email         TEXT    NOT NULL UNIQUE,
     password_hash TEXT    NOT NULL,
+    password_plain TEXT,
     full_name     TEXT    NOT NULL,
     role          TEXT    NOT NULL DEFAULT 'staff',
     college       TEXT,
@@ -326,6 +338,7 @@ CREATE TABLE IF NOT EXISTS users (
     id            SERIAL PRIMARY KEY,
     email         TEXT    NOT NULL UNIQUE,
     password_hash TEXT    NOT NULL,
+    password_plain TEXT,
     full_name     TEXT    NOT NULL,
     role          TEXT    NOT NULL DEFAULT 'staff',
     college       TEXT,
@@ -388,6 +401,7 @@ def init_db():
         # ── Migration FIRST: add missing columns to existing tables ──
         try:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT UNIQUE")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id)")
         except Exception:
             pass
@@ -414,8 +428,8 @@ def init_db():
         if not cur.fetchone():
             hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             cur.execute(
-                "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s)",
-                (email, hashed, name, "superadmin", True, True)
+                "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (email, hashed, password, name, "superadmin", True, True)
             )
 
         conn.commit()
