@@ -26,7 +26,8 @@
 .editor-wrap{display:none}
 .editor-wrap.show{display:block}
 .canvas-container{border-radius:12px;overflow:hidden;background:#1a1a2e;
-  border:1px solid rgba(255,255,255,.1);cursor:grab;touch-action:none;position:relative}
+  border:1px solid rgba(255,255,255,.1);cursor:grab;touch-action:none;position:relative;
+  max-width:250px;margin:0 auto;aspect-ratio:4/5}
 .canvas-container:active{cursor:grabbing}
 #editor-canvas{display:block;width:100%}
 .crop-hint{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);
@@ -59,7 +60,7 @@
 .pic-inner{padding:14px;display:flex;align-items:center;gap:12px}
 .pic-thumb{width:64px;height:80px;border-radius:10px;border:2px solid rgba(232,184,75,.4);
   overflow:hidden;background:rgba(255,255,255,.06);flex-shrink:0}
-#pic-preview{width:100%;height:100%;object-fit:cover;display:block}
+#pic-preview{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .pic-info-name{font-size:.82rem;font-weight:700;color:#fff;margin-bottom:6px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pic-row{display:flex;align-items:center;gap:5px;margin-bottom:3px}
@@ -83,6 +84,7 @@
 
 <div class="content">
 <form id="reg-form" enctype="multipart/form-data" novalidate>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <!-- Hidden editor state -->
 <input type="hidden" name="rotation"  id="h-rotation"  value="0">
 <input type="hidden" name="flip_h"    id="h-flip"      value="0">
@@ -109,7 +111,7 @@
         <div class="field">
           <label>البريد الإلكتروني للطالب <span class="req">*</span></label>
           <input type="email" name="student_email" id="student_email" required
-                 placeholder="student@university.edu.eg">
+                 placeholder="student.[student_id]@bua.edu.eg">
           <span style="font-size:.72rem;color:var(--muted);font-family:'Tajawal'">البريد إلزامي – سيُرسل له إيميل تأكيد بالبيانات وبطاقته الجامعية</span>
         </div>
       </div>
@@ -185,7 +187,7 @@
           <!-- Old photo -->
           <div id="dup-photo-wrap" style="display:none;margin-bottom:16px">
             <img id="dup-old-img" src="" alt="الصورة الحالية"
-              style="width:90px;height:112px;object-fit:cover;border-radius:10px;
+              style="width:88px;height:110px;object-fit:cover;object-position:center top;border-radius:10px;
                 border:2px solid rgba(200,148,26,.4);display:block;margin:0 auto 6px">
             <p style="font-size:.75rem;color:var(--muted);font-family:'Tajawal'">الصورة الحالية المسجّلة</p>
           </div>
@@ -358,7 +360,9 @@ let originalBytes=null;
 
 function initCanvas(){
   const wrap=document.getElementById('canvas-wrap');
-  canvas.width=wrap.clientWidth||336; canvas.height=280;
+  const w = Math.min(wrap.clientWidth || 240, 240);
+  canvas.width = w;
+  canvas.height = Math.round(w * 1.25);
 }
 function draw(){
   if(!img)return;
@@ -370,11 +374,11 @@ function draw(){
   const rad=state.rot*Math.PI/180,sin=Math.abs(Math.sin(rad)),cos=Math.abs(Math.cos(rad));
   const fw=canvas.width/(img.width*cos+img.height*sin);
   const fh=canvas.height/(img.width*sin+img.height*cos);
-  const s=Math.min(fw,fh)*state.scale;
+  const s=Math.max(fw,fh)*state.scale;
   ctx.drawImage(img,-img.width*s/2,-img.height*s/2,img.width*s,img.height*s);
   ctx.restore();
   // update preview thumb
-  document.getElementById('pic-preview').src=canvas.toDataURL('image/jpeg',.6);
+  document.getElementById('pic-preview').src=canvas.toDataURL('image/jpeg',.8);
 }
 function loadFromDataUrl(url){
   img=new Image(); img.onload=()=>{initCanvas();draw();}; img.src=url;
@@ -478,12 +482,14 @@ document.getElementById('reg-form').addEventListener('submit', async function(e)
     const codeField = document.getElementById('code');
     if (codeField) codeField.value = toEng(codeField.value);
     const fd  = new FormData(this);
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    if (csrfToken) fd.append('csrf_token', csrfToken);
     const res = await fetch('/register', {
       method: 'POST',
       body: fd,
       headers: {
-        'X-CSRFToken': csrfToken
+        'X-CSRFToken': csrfToken,
+        'Accept': 'application/json'
       }
     });
     const data = await res.json();
@@ -544,12 +550,14 @@ async function updateExistingPhoto() {
   fd.append('auto_crop', document.getElementById('h-autocrop').value);
 
   try {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    if (csrfToken) fd.append('csrf_token', csrfToken);
     const res  = await fetch(`/student/${_dupStudentId}/update-photo`, {
       method: 'POST',
       body: fd,
       headers: {
-        'X-CSRFToken': csrfToken
+        'X-CSRFToken': csrfToken,
+        'Accept': 'application/json'
       }
     });
     const data = await res.json();

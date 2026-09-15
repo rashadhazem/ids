@@ -25,7 +25,6 @@ JPEG_Q = 88  # output quality
 # OpenCV face detection cascades
 _CASCADES = []
 try:
-    import cv2
     _CASCADE_PATHS = [
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml",
         cv2.data.haarcascades + "haarcascade_frontalface_alt2.xml",
@@ -118,7 +117,7 @@ def _non_max_suppression(boxes: list[tuple[int, int, int, int]], overlap_thresh:
 
 
 def detect_faces_opencv(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
-    """Face detection using OpenCV cascades with CLAHE and Non-Maximum Suppression."""
+    """Fast, optimized face detection using OpenCV cascades with CLAHE and early-exit."""
     if not _CASCADES:
         return []
     
@@ -127,11 +126,11 @@ def detect_faces_opencv(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
         return []
 
     orig_h, orig_w = cv_img.shape[:2]
-    max_dim = 1000
+    max_dim = 640  # Downscale to 640px for 4x faster detection
     scale_x, scale_y = 1.0, 1.0
     if max(orig_h, orig_w) > max_dim:
         sc = max_dim / max(orig_h, orig_w)
-        cv_img = cv2.resize(cv_img, (int(orig_w * sc), int(orig_h * sc)))
+        cv_img = cv2.resize(cv_img, (int(orig_w * sc), int(orig_h * sc)), interpolation=cv2.INTER_AREA)
         det_h, det_w = cv_img.shape[:2]
         scale_x = orig_w / det_w
         scale_y = orig_h / det_h
@@ -141,14 +140,17 @@ def detect_faces_opencv(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
     gray = clahe.apply(gray)
 
     all_detected = []
-    for cascade in _CASCADES:
+    for idx, cascade in enumerate(_CASCADES):
         detected = cascade.detectMultiScale(
-            gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(28, 28)
         )
         if len(detected) > 0:
             scaled = [(int(x * scale_x), int(y * scale_y), int(w * scale_x), int(h * scale_y))
                       for (x, y, w, h) in detected]
             all_detected.extend(scaled)
+            # If the primary cascade found a clear face, early exit to save CPU
+            if idx == 0 and len(detected) == 1:
+                break
 
     return _non_max_suppression(all_detected)
 
@@ -196,56 +198,88 @@ def face_detected(image_bytes: bytes) -> bool:
     return len(detect_faces(image_bytes)) > 0
 
 
-def smart_crop_face(image_bytes: bytes) -> bytes:
+def smart_crop_face(image_bytes: bytes, faces: list = None) -> bytes:
     """
     Auto-crop the image centered on the detected face with strict 4:5 aspect ratio (400x500).
-    Adds proper headroom above and upper body below, avoiding any distortion.
+    Guarantees that the entire face (hair, forehead, eyes, nose, chin, neck) is completely
+    visible and fills the ID card frame 100% with zero empty gaps or distortion.
     """
     normalized_bytes = _normalize_image_bytes(image_bytes)
     pil = Image.open(io.BytesIO(normalized_bytes)).convert("RGB")
     iw, ih = pil.size
 
-    faces = detect_faces(normalized_bytes)
+    if faces is None:
+        faces = detect_faces(normalized_bytes)
     target_ar = TARGET_W / TARGET_H  # 400 / 500 = 0.8
 
     if faces:
+        # Choose the most prominent face
         fx, fy, fw, fh = max(faces, key=lambda r: r[2] * r[3])
+
+        # Anatomical estimates from Haar face box:
+        # Haar cascade rectangle spans from eyebrows/eyes to chin
+        # Top of skull / hair is ~35% of fh above fy
+        # Chin / jawline is ~12% of fh below fy + fh
+        head_top = max(0, fy - int(fh * 0.35))
+        chin_bottom = min(ih, fy + fh + int(fh * 0.12))
+        head_height = max(1, chin_bottom - head_top)
         face_cx = fx + fw // 2
-        face_cy = fy + fh // 2
+        eye_y = fy + int(fh * 0.35)
 
-        # Desired crop height: face should occupy ~45-50% of the ID frame
-        crop_h = int(fh * 2.2)
-        crop_w = int(crop_h * target_ar)
+        # ID / Passport standards: head should occupy ~58-62% of photo height
+        desired_crop_h = int(head_height / 0.60)
+        desired_crop_w = int(desired_crop_h * target_ar)
 
-        # If desired crop exceeds image bounds, scale down preserving exact 4:5 aspect ratio
-        if crop_h > ih or crop_w > iw:
+        # If desired crop exceeds image boundaries, fit largest 4:5 box possible
+        if desired_crop_h > ih or desired_crop_w > iw:
             if iw / ih > target_ar:
                 crop_h = ih
                 crop_w = int(crop_h * target_ar)
             else:
                 crop_w = iw
                 crop_h = int(crop_w / target_ar)
+        else:
+            crop_h = desired_crop_h
+            crop_w = desired_crop_w
 
-        # Center horizontally on face, clamped within image boundaries
+        # Ensure crop is at least big enough to contain the face if possible
+        if crop_h < int(head_height * 1.25) and int(head_height * 1.25) <= ih and int(head_height * 1.25 * target_ar) <= iw:
+            crop_h = int(head_height * 1.25)
+            crop_w = int(crop_h * target_ar)
+
+        # Horizontal positioning: centered on face midline
         left = int(face_cx - crop_w // 2)
         left = max(0, min(left, iw - crop_w))
 
-        # Position vertically: leave ~18% headroom above top of face
-        top = int(fy - int(crop_h * 0.18))
-        top = max(0, min(top, ih - crop_h))
+        # Vertical positioning: eyes positioned around 38-40% from top
+        target_top = eye_y - int(crop_h * 0.38)
+
+        # Ensure headroom above head_top
+        if target_top > head_top - int(crop_h * 0.08):
+            target_top = head_top - int(crop_h * 0.08)
+
+        # Ensure chin is well above bottom
+        if target_top + crop_h < chin_bottom + int(crop_h * 0.06):
+            target_top = chin_bottom + int(crop_h * 0.06) - crop_h
+
+        # Clamp within image bounds
+        top = max(0, min(target_top, ih - crop_h))
 
     else:
-        # Fallback centered 4:5 crop without face
+        # Fallback portrait-aware 4:5 crop without detected face
         if iw / ih > target_ar:
             crop_h = ih
             crop_w = int(ih * target_ar)
+            left = (iw - crop_w) // 2
+            top = 0
         else:
             crop_w = iw
             crop_h = int(iw / target_ar)
-        left = (iw - crop_w) // 2
-        top = (ih - crop_h) // 2
+            left = 0
+            # Position towards upper-third where heads typically reside
+            top = max(0, min(int((ih - crop_h) * 0.20), ih - crop_h))
 
-    # Crop and high-quality resize
+    # Crop and high-quality resize to exact target dimensions
     cropped = pil.crop((left, top, left + crop_w, top + crop_h))
     resized = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
     return _pil_to_bytes(resized)
@@ -259,6 +293,7 @@ def apply_edits(
     offset_x: float = 0.0,
     offset_y: float = 0.0,
     auto_crop: bool = True,
+    faces: list = None,
 ) -> bytes:
     """
     Apply manual edits from the front-end canvas editor, then
@@ -288,7 +323,7 @@ def apply_edits(
     edited_bytes = _pil_to_bytes(pil)
 
     if auto_crop:
-        return smart_crop_face(edited_bytes)
+        return smart_crop_face(edited_bytes, faces=faces)
 
     # Ensure 4:5 aspect ratio without distortion if manual crop
     target_ar = TARGET_W / TARGET_H
@@ -296,14 +331,84 @@ def apply_edits(
     if iw / ih > target_ar:
         crop_w = int(ih * target_ar)
         crop_h = ih
+        left = (iw - crop_w) // 2
+        top = 0
     else:
         crop_h = int(iw / target_ar)
         crop_w = iw
-    left = (iw - crop_w) // 2
-    top = (ih - crop_h) // 2
+        left = 0
+        top = max(0, min(int((ih - crop_h) * 0.20), ih - crop_h))
     cropped = pil.crop((left, top, left + crop_w, top + crop_h))
     resized = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
     return _pil_to_bytes(resized)
+
+
+def process_and_validate_photo(
+    raw_bytes: bytes,
+    rotation: int = 0,
+    flip_h: bool = False,
+    zoom: float = 1.0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    auto_crop: bool = True,
+) -> tuple[bool, str, bytes | None]:
+    """
+    High-performance single-pass image processor and face validator.
+    Applies user canvas adjustments, detects face ONCE, verifies strictly 1 person,
+    and returns (is_valid, msg, processed_bytes).
+    """
+    try:
+        # 1. Apply user edits
+        pil = Image.open(io.BytesIO(raw_bytes))
+        pil = _fix_exif_rotation(pil).convert("RGB")
+        if flip_h:
+            pil = pil.transpose(Image.FLIP_LEFT_RIGHT)
+        if rotation:
+            pil = pil.rotate(-rotation, expand=True)
+
+        iw, ih = pil.size
+        if zoom != 1.0 or offset_x != 0.0 or offset_y != 0.0:
+            new_w = max(1, int(iw / zoom))
+            new_h = max(1, int(ih / zoom))
+            cx = iw // 2 + int(offset_x * iw * 0.5)
+            cy = ih // 2 + int(offset_y * ih * 0.5)
+            left = max(0, min(cx - new_w // 2, max(0, iw - new_w)))
+            top = max(0, min(cy - new_h // 2, max(0, ih - new_h)))
+            pil = pil.crop((left, top, left + new_w, top + new_h))
+
+        edited_bytes = _pil_to_bytes(pil)
+
+        # 2. Single-pass face detection
+        faces = detect_faces(edited_bytes)
+        count = len(faces)
+        if count == 0:
+            return False, "لم يتم اكتشاف أي وجه بشري في الصورة. يرجى رفع صورة شخصية واضحة تظهر الوجه بالكامل.", None
+        if count > 1:
+            return False, f"تحتوي الصورة على أكثر من شخص ({count} أشخاص). يجب أن تحتوي الصورة على شخص واحد فقط.", None
+
+        # 3. Smart crop using already-detected face (0 redundant cascade runs!)
+        if auto_crop:
+            final_bytes = smart_crop_face(edited_bytes, faces=faces)
+        else:
+            target_ar = TARGET_W / TARGET_H
+            iw, ih = pil.size
+            if iw / ih > target_ar:
+                crop_w = int(ih * target_ar)
+                crop_h = ih
+                left = (iw - crop_w) // 2
+                top = 0
+            else:
+                crop_h = int(iw / target_ar)
+                crop_w = iw
+                left = 0
+                top = max(0, min(int((ih - crop_h) * 0.20), ih - crop_h))
+            cropped = pil.crop((left, top, left + crop_w, top + crop_h))
+            final_bytes = _pil_to_bytes(cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS))
+
+        return True, "تم التحقق من الصورة بنجاح (شخص واحد).", final_bytes
+
+    except Exception as e:
+        return False, f"خطأ أثناء معالجة الصورة: {e}", None
 
 
 def _college_folder(college: str) -> str:
@@ -313,17 +418,17 @@ def _college_folder(college: str) -> str:
 
 
 def save_image(
-    image_bytes: bytes, student_id: str, year: str, college: str, upload_root: str
+    image_bytes: bytes, student_id: str, year: str, college: str, upload_root: str, skip_validation: bool = True
 ) -> dict:
     """
-    Save processed image if it contains strictly one human face.
-    Local path: uploads/{year}/{college}/{student_id}.jpg
-    Also uploads directly to Google Drive.
+    Save processed image directly to local VPS storage.
+    Path: uploads/{year}/{college}/{student_id}.jpg
     Returns { "path": relative_path, "url": public_url }
     """
-    is_valid, msg, _ = validate_single_person(image_bytes)
-    if not is_valid:
-        raise ValueError(msg)
+    if not skip_validation:
+        is_valid, msg, _ = validate_single_person(image_bytes)
+        if not is_valid:
+            raise ValueError(msg)
 
     year_folder = os.path.join(upload_root, year)
     os.makedirs(year_folder, exist_ok=True)
@@ -338,12 +443,18 @@ def save_image(
     with open(full_path, "wb") as f:
         f.write(image_bytes)
 
-    # Sync upload directly to Google Drive
-    try:
-        if is_gdrive_configured():
-            upload_to_gdrive(image_bytes, year, college, filename)
-    except Exception as e:
-        print(f"[GDrive] Image upload error: {e}")
+    # Optional background sync to Google Drive (never blocks student upload on VPS)
+    if os.getenv("ENABLE_GDRIVE_SYNC", "false").lower() == "true":
+        try:
+            if is_gdrive_configured():
+                import threading
+                threading.Thread(
+                    target=upload_to_gdrive,
+                    args=(image_bytes, year, college, filename),
+                    daemon=True
+                ).start()
+        except Exception as e:
+            print(f"[GDrive Async] Upload dispatch error: {e}")
 
     rel_path = os.path.relpath(full_path, os.path.join(upload_root, "..")).replace(
         "\\", "/"

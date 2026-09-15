@@ -321,6 +321,18 @@
         <span class="qa-sub">تحميل بيانات الطلاب</span>
       </div>
     </a>
+
+    {% if role in ['superadmin', 'staff'] %}
+    <a href="{{ url_for('admin_export_photos') }}" class="qa-card">
+      <div class="qa-icon" style="background:rgba(2,132,199,0.1);color:#0284c7">
+        <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+      </div>
+      <div>
+        <span class="qa-title">تحميل صور الطلاب (ZIP)</span>
+        <span class="qa-sub">تنزيل كافة الصور من السيرفر</span>
+      </div>
+    </a>
+    {% endif %}
   </div>
 
   <!-- 4. COLLEGE DISTRIBUTION (SUPERADMIN & STAFF) -->
@@ -401,9 +413,9 @@
       <div class="table-card-header">
         <h2>
           <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-          آخر العمليات والنشاطات
+          {% if role == 'admin' %}آخر نشاطات وعمليات طلاب الكلية{% else %}آخر العمليات والنشاطات{% endif %}
         </h2>
-        {% if role == 'superadmin' %}
+        {% if role in ['superadmin', 'admin'] %}
         <a href="{{ url_for('admin_panel') }}#audit" class="btn btn-outline btn-sm">السجل الكامل</a>
         {% endif %}
       </div>
@@ -412,19 +424,50 @@
           <thead>
             <tr>
               <th>الإجراء</th>
-              <th>المستخدم</th>
+              <th>الطالب / المستخدم</th>
               <th>التاريخ</th>
             </tr>
           </thead>
           <tbody>
+            {% set action_names = {
+              'LOGIN': 'تسجيل دخول',
+              'LOGOUT': 'تسجيل خروج',
+              'REGISTER_STUDENT': 'تسجيل طالب',
+              'STUDENT_SELF_REGISTER': 'تسجيل ذاتي',
+              'UPDATE_PHOTO': 'تحديث صورة',
+              'EDIT_STUDENT': 'تعديل بيانات',
+              'DELETE_STUDENT': 'حذف طالب',
+              'CHANGE_PASSWORD': 'تغيير كلمة المرور',
+              'EMAIL_VERIFIED': 'تأكيد البريد',
+              'BULK_IMPORT_STUDENT': 'استيراد بيانات'
+            } %}
+            {% set action_colors = {
+              'LOGIN': 'badge-blue',
+              'REGISTER_STUDENT': 'badge-green',
+              'STUDENT_SELF_REGISTER': 'badge-green',
+              'UPDATE_PHOTO': 'badge-gold',
+              'EDIT_STUDENT': 'badge-blue',
+              'DELETE_STUDENT': 'badge-red',
+              'CHANGE_PASSWORD': 'badge-gold',
+              'EMAIL_VERIFIED': 'badge-green'
+            } %}
             {% for a in audit %}
             <tr>
-              <td><span class="badge badge-blue" style="font-size:.7rem">{{ a.action }}</span></td>
-              <td style="font-size:.78rem;font-weight:600">{{ a.full_name or 'نظام' }}</td>
-              <td style="font-size:.72rem;color:var(--muted);direction:ltr">{{ a.created_at }}</td>
+              <td>
+                <span class="badge {{ action_colors.get(a.action, 'badge-blue') }}" style="font-size:.7rem">
+                  {{ action_names.get(a.action, a.action) }}
+                </span>
+              </td>
+              <td>
+                <span style="font-size:.8rem;font-weight:700;display:block">{{ a.full_name or 'طالب' }}</span>
+                {% if a.student_id or a.target %}
+                <small style="font-size:.7rem;color:var(--muted);font-family:'Courier New',monospace">{{ a.student_id or a.target }}</small>
+                {% endif %}
+              </td>
+              <td style="font-size:.72rem;color:var(--muted);direction:ltr">{{ a.created_at_fmt or a.created_at }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:24px">لا توجد أنشطة حديثة</td></tr>
+            <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:24px">لا توجد أنشطة حديثة لطلاب الكلية</td></tr>
             {% endfor %}
           </tbody>
         </table>

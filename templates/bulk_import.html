@@ -260,12 +260,14 @@ document.getElementById('import-btn').addEventListener('click', async () => {
   try {
     const fd = new FormData();
     fd.append('file', selectedFile);
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    if (csrfToken) fd.append('csrf_token', csrfToken);
     const res  = await fetch('/admin/bulk-import', {
       method: 'POST',
       body: fd,
       headers: {
-        'X-CSRFToken': csrfToken
+        'X-CSRFToken': csrfToken,
+        'Accept': 'application/json'
       }
     });
     const data = await res.json();

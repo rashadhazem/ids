@@ -41,6 +41,11 @@ def is_gdrive_configured() -> bool:
     if not GOOGLE_LIBS_AVAILABLE:
         return False
 
+    # VPS local storage is primary. GDrive sync only runs if explicitly enabled.
+    sync_enabled = os.getenv("ENABLE_GDRIVE_SYNC", "false").strip().lower() in ("true", "1", "yes")
+    if not sync_enabled:
+        return False
+
     service_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
     service_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
     client_id    = os.getenv("GOOGLE_CLIENT_ID", "")

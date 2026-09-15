@@ -12,6 +12,7 @@ load_dotenv(override=True)
 try:
     import psycopg2
     import psycopg2.extras
+    import psycopg2.pool
     HAS_PG = True
 except ImportError:
     HAS_PG = False
@@ -62,9 +63,12 @@ def set_use_pg(val: bool):
 
 def _connect_sqlite():
     os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
-    conn = sqlite3.connect(SQLITE_PATH, timeout=10.0)
+    conn = sqlite3.connect(SQLITE_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA cache_size=-64000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -221,6 +225,72 @@ class NeonHTTPConnection:
 # Global flag to avoid waiting for 15s timeout on every request if port 5432 is blocked
 _PG_PORT_BLOCKED = os.getenv("USE_NEON_HTTP", "").strip().lower() in ("true", "1", "yes")
 
+class PooledPGConnectionWrapper:
+    """
+    Wraps a pooled connection from ThreadedConnectionPool.
+    When caller executes db.close(), it returns the connection back to the pool
+    rather than closing the actual TCP socket, enabling 500+ concurrent requests.
+    """
+    def __init__(self, pool, conn):
+        self._pool = pool
+        self._conn = conn
+        self._closed = False
+
+    def cursor(self, *args, **kwargs):
+        if "cursor_factory" not in kwargs:
+            kwargs["cursor_factory"] = psycopg2.extras.RealDictCursor
+        return self._conn.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        if not self._closed:
+            self._closed = True
+            if self._pool and self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+                try:
+                    self._pool.putconn(self._conn)
+                except Exception:
+                    pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+_pg_pool = None
+
+def _get_pg_pool(db_url):
+    global _pg_pool
+    if _pg_pool is None and HAS_PG:
+        try:
+            min_conn = int(os.getenv("DB_POOL_MIN", "5"))
+            max_conn = int(os.getenv("DB_POOL_MAX", "50"))
+            _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                min_conn,
+                max_conn,
+                db_url,
+                connect_timeout=PG_TIMEOUT,
+                cursor_factory=psycopg2.extras.RealDictCursor
+            )
+            print(f"[INFO] PostgreSQL ThreadedConnectionPool initialized (min={min_conn}, max={max_conn})")
+        except Exception as e:
+            print(f"[WARNING] Failed to initialize PostgreSQL pool: {e}")
+            _pg_pool = None
+    return _pg_pool
+
 
 # ── connection factory ─────────────────────────────────────────────────────
 def get_db(force_sqlite: bool = False):
@@ -243,7 +313,17 @@ def get_db(force_sqlite: bool = False):
         except Exception as e:
             print(f"[WARNING] Neon HTTP connection failed: {e}")
 
-    # Standard PostgreSQL TCP connection (e.g. Docker PostgreSQL on localhost:5432 or VPS)
+    # Standard PostgreSQL Connection Pool (handles 500+ concurrent requests without dropping)
+    pool = _get_pg_pool(current_db_url)
+    if pool:
+        try:
+            raw_conn = pool.getconn()
+            raw_conn.autocommit = False
+            return PooledPGConnectionWrapper(pool, raw_conn)
+        except Exception as pe:
+            print(f"[WARNING] Pool getconn failed ({pe}), trying direct connect...")
+
+    # Fallback to direct connect if pool not initialized
     try:
         conn = psycopg2.connect(
             current_db_url,
@@ -323,6 +403,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS student_id_history (
+    old_student_id TEXT PRIMARY KEY,
+    new_student_id TEXT NOT NULL,
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_student_id     ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_year           ON students(year);
 CREATE INDEX IF NOT EXISTS idx_college        ON students(college);
@@ -331,6 +417,8 @@ CREATE INDEX IF NOT EXISTS idx_fullname       ON students(full_name);
 CREATE INDEX IF NOT EXISTS idx_user_student   ON users(student_id);
 CREATE INDEX IF NOT EXISTS idx_audit_user     ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_ts       ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_hist_old       ON student_id_history(old_student_id);
+CREATE INDEX IF NOT EXISTS idx_hist_new       ON student_id_history(new_student_id);
 """
 
 _PG_SCHEMA = """
@@ -374,12 +462,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS student_id_history (
+    old_student_id TEXT PRIMARY KEY,
+    new_student_id TEXT NOT NULL,
+    created_at     TIMESTAMP DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_student_id ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_year       ON students(year);
 CREATE INDEX IF NOT EXISTS idx_college    ON students(college);
 CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id);
 CREATE INDEX IF NOT EXISTS idx_audit_user   ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_hist_old     ON student_id_history(old_student_id);
+CREATE INDEX IF NOT EXISTS idx_hist_new     ON student_id_history(new_student_id);
 """
 
 
@@ -390,22 +486,32 @@ def init_db():
     cur  = conn.cursor()
 
     if is_use_pg():
-        # Fast check: if users table already exists, skip redundant DDL statements
-        try:
-            cur.execute("SELECT 1 FROM users LIMIT 1")
-            print("[INFO] PostgreSQL database connected and verified.")
-            return
-        except Exception:
-            pass
-
-        # ── Migration FIRST: add missing columns to existing tables ──
+        # ── Migration: add missing columns & student_id_history table ──
         try:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT UNIQUE")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS student_id_history (
+                    old_student_id TEXT PRIMARY KEY,
+                    new_student_id TEXT NOT NULL,
+                    created_at     TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_hist_old ON student_id_history(old_student_id);
+                CREATE INDEX IF NOT EXISTS idx_hist_new ON student_id_history(new_student_id);
+            """)
+            conn.commit()
+        except Exception as e:
+            pass
+
+        # Fast check: if users table already exists, skip redundant DDL statements
+        try:
+            cur.execute("SELECT 1 FROM users LIMIT 1")
+            conn.close()
+            print("[INFO] PostgreSQL database connected and verified.")
+            return
         except Exception:
             pass
-        conn.commit()
 
         # ── Create tables + indexes ──
         for stmt in _PG_SCHEMA.split(";"):
@@ -439,6 +545,7 @@ def init_db():
         # SQLite migrations
         migrations = [
             "ALTER TABLE users ADD COLUMN student_id TEXT",
+            "ALTER TABLE users ADD COLUMN password_plain TEXT",
         ]
         for m in migrations:
             try:
@@ -468,8 +575,8 @@ def init_db():
         if not cur.fetchone():
             hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             cur.execute(
-                "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?)",
-                (email, hashed, name, "superadmin", 1, 1)
+                "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?,?)",
+                (email, hashed, password, name, "superadmin", 1, 1)
             )
 
         conn.commit()

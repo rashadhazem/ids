@@ -82,7 +82,7 @@ select:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backg
 
 .editor-wrap{display:none;margin-top:12px}
 .canvas-wrap{border-radius:12px;overflow:hidden;background:#0d1f3c;
-  cursor:grab;touch-action:none;position:relative}
+  cursor:grab;touch-action:none;position:relative;max-width:240px;margin:0 auto;aspect-ratio:4/5}
 .canvas-wrap:active{cursor:grabbing}
 #ec{display:block;width:100%}
 .crop-hint{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);
@@ -116,7 +116,7 @@ select:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backg
 .pc-thumb{width:60px;height:75px;border-radius:10px;
   border:2px solid rgba(232,184,75,.5);overflow:hidden;
   background:rgba(255,255,255,.08);flex-shrink:0}
-#pc-img{width:100%;height:100%;object-fit:cover;display:block}
+#pc-img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .pc-name{font-size:.9rem;font-weight:700;color:#fff;margin-bottom:4px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pc-row{display:flex;align-items:center;gap:5px;margin-bottom:4px}
@@ -299,7 +299,7 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.3);
       <div id="photo-preview-box" style="display:none;background:#f8fafc;border:1.5px solid #dce3ef;border-radius:14px;padding:16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:16px">
           <img id="quick-photo-thumb" src="" alt="صورتك الشخصية"
-               style="width:75px;height:95px;border-radius:10px;object-fit:cover;border:2px solid #e8b84b;box-shadow:0 4px 12px rgba(0,0,0,.08)">
+               style="width:76px;height:95px;border-radius:10px;object-fit:cover;object-position:center top;border:2px solid #e8b84b;box-shadow:0 4px 12px rgba(0,0,0,.08)">
           <div style="flex:1">
             <div style="color:#16a34a;font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:5px;margin-bottom:4px">
               <svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
@@ -395,7 +395,7 @@ footer{position:relative;z-index:1;color:rgba(255,255,255,.3);
     <p id="dup-txt" style="margin-top:6px"></p>
     <div id="dup-img-wrap" style="display:none;margin:14px 0">
       <img id="dup-img" src="" alt="الصورة الحالية"
-        style="width:80px;height:100px;object-fit:cover;border-radius:9px;
+        style="width:80px;height:100px;object-fit:cover;object-position:center top;border-radius:9px;
           border:2px solid rgba(200,148,26,.4);display:block;margin:0 auto 5px">
       <p style="font-size:.72rem;color:#8896b3;font-family:'Tajawal'">الصورة الحالية</p>
     </div>
@@ -432,8 +432,9 @@ let img=null,st={rot:0,fh:false,sc:1,ox:0,oy:0},drag={on:false},origUrl=null;
 
 function initC(){
   const w=document.getElementById('cwrap');
-  canvas.width=w.clientWidth||580;
-  canvas.height=280;
+  const width = Math.min(w.clientWidth || 240, 240);
+  canvas.width = width;
+  canvas.height = Math.round(width * 1.25);
 }
 
 function draw(){
@@ -446,10 +447,10 @@ function draw(){
   const r=st.rot*Math.PI/180,s=Math.abs(Math.sin(r)),c=Math.abs(Math.cos(r));
   const fw=canvas.width/(img.width*c+img.height*s);
   const fh=canvas.height/(img.width*s+img.height*c);
-  const z=Math.min(fw,fh)*st.sc;
+  const z=Math.max(fw,fh)*st.sc;
   ctx.drawImage(img,-img.width*z/2,-img.height*z/2,img.width*z,img.height*z);
   ctx.restore();
-  const thumbUrl = canvas.toDataURL('image/jpeg',.7);
+  const thumbUrl = canvas.toDataURL('image/jpeg',.8);
   document.getElementById('pc-img').src = thumbUrl;
   document.getElementById('quick-photo-thumb').src = thumbUrl;
 }

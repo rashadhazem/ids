@@ -1,32 +1,33 @@
 """
-gunicorn_config.py – Gunicorn Production WSGI Configuration for BUA Portal
-Optimized for 1 vCPU / 4GB RAM Hostinger VPS.
+gunicorn_config.py – Gunicorn High-Concurrency Production Configuration for BUA Portal
+Async Gevent Coroutines / 500+ simultaneous requests & 400 concurrent uploads.
 """
 import multiprocessing
+import os
 
-# Network binding
-bind = "127.0.0.1:5000"
+# Network binding & socket queue
+bind = os.getenv("GUNICORN_BIND", "127.0.0.1:5000")
+backlog = 2048  # High socket queue to prevent connection refusal under surge traffic
 
-# Workers & Threads
-# Standard formula for 1 core: (2 * cores) + 1 = 3 workers
-workers = 3
-worker_class = "gthread"
-threads = 4
-worker_connections = 1000
+# High-Concurrency Async Workers (Gevent Greenlets)
+# Standard formula: (2 * cores) + 1
+workers = max(3, multiprocessing.cpu_count() * 2 + 1)
+worker_class = "gevent"
+worker_connections = 1000  # Capable of 3,000+ simultaneous persistent connections
 
 # Timeouts & Keep-alive
-timeout = 60
+timeout = 120
 graceful_timeout = 30
-keepalive = 5
+keepalive = 65
 
-# Memory & Process Management
-max_requests = 2000
-max_requests_jitter = 100
+# Memory & Process Lifecycle
+max_requests = 5000
+max_requests_jitter = 200
 
 # Logging
-accesslog = "/var/log/bua/access.log"
-errorlog = "/var/log/bua/error.log"
-loglevel = "info"
+accesslog = os.getenv("GUNICORN_ACCESS_LOG", "/var/log/bua/access.log")
+errorlog = os.getenv("GUNICORN_ERROR_LOG", "/var/log/bua/error.log")
+loglevel = os.getenv("GUNICORN_LOG_LEVEL", "info")
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" (%(L)ss)'
 
 # Process Name

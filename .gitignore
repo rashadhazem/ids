@@ -1,5 +1,5 @@
-.env 
-.env.example
+.env
+.env.local
 venv/
 
 SECURITY_AUDIT_REPORTS.md

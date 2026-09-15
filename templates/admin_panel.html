@@ -583,6 +583,14 @@
       تصدير Excel
     </a>
     {% endif %}
+    {% if role in ['superadmin','staff'] %}
+    <button type="button" class="btn btn-primary btn-sm" onclick="openExportPhotosModal()" style="background:#0284c7;border-color:#0284c7;color:#fff;display:inline-flex;align-items:center;gap:6px">
+      <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24">
+        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+      </svg>
+      تحميل صور الطلاب (ZIP)
+    </button>
+    {% endif %}
   </div>
 </div>
 
@@ -591,7 +599,9 @@
     <button class="tab active" onclick="switchTab('students',this)">قائمة الطلاب</button>
     {% if role == 'superadmin' %}
     <button class="tab" onclick="switchTab('users',this)">المستخدمون</button>
-    <button class="tab" onclick="switchTab('audit',this)">سجل العمليات</button>
+    {% endif %}
+    {% if role in ['superadmin', 'admin'] %}
+    <button class="tab" onclick="switchTab('audit',this)">{% if role == 'admin' %}سجل عمليات طلاب الكلية{% else %}سجل العمليات{% endif %}</button>
     {% endif %}
   </div>
 
@@ -733,15 +743,19 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
+  {% if role in ['superadmin', 'admin'] %}
   <!-- AUDIT -->
   <div class="tab-panel" id="panel-audit">
     <div class="card">
-      <div class="card-header"><h2>سجل العمليات الكامل</h2></div>
+      <div class="card-header">
+        <h2>{% if role == 'admin' %}سجل عمليات ونشاطات طلاب الكلية{% else %}سجل العمليات الكامل{% endif %}</h2>
+      </div>
       <div class="tbl-wrap">
         <table>
           <thead>
-            <tr><th>الإجراء</th><th>المستخدم</th><th>البريد</th><th>الهدف</th><th>التوقيت</th></tr>
+            <tr><th>الإجراء</th><th>اسم الطالب</th><th>البريد</th><th>الرقم الجامعي / الهدف</th><th>التوقيت</th></tr>
           </thead>
           <tbody id="audit-tbody">
             <tr class="loader-row"><td colspan="5"><div class="loader-spin"></div></td></tr>
@@ -769,7 +783,7 @@
 
     <!-- Student Profile Header (Image + Full Name) -->
     <div style="display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,rgba(13,31,60,.03),rgba(26,58,107,.07));padding:16px;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:16px">
-      <img id="vs-image" src="" style="width:85px;height:105px;border-radius:10px;object-fit:cover;border:2px solid var(--gold2);box-shadow:0 4px 12px rgba(0,0,0,0.08);background:#fff" alt="صورة الطالب">
+      <img id="vs-image" src="" style="width:96px;height:120px;border-radius:10px;object-fit:cover;object-position:center top;border:2px solid var(--gold2);box-shadow:0 4px 12px rgba(0,0,0,0.08);background:#fff" alt="صورة الطالب">
       <div style="flex:1">
         <h4 id="vs-full-name" style="margin:0 0 6px;font-size:1.05rem;color:var(--navy);font-weight:700"></h4>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
@@ -840,7 +854,7 @@
       
       <!-- Photo Section -->
       <div style="display:flex;align-items:center;gap:14px;background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:14px">
-        <img id="es-preview" src="" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:2px solid #cbd5e1" alt="">
+        <img id="es-preview" src="" style="width:72px;height:90px;border-radius:8px;object-fit:cover;object-position:center top;border:2px solid #cbd5e1" alt="">
         <div style="flex:1">
           <label for="es-image" class="btn btn-outline btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
             <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm8 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>
@@ -1069,13 +1083,67 @@
   </div>
 </div>
 {% endif %}
+
+{% if role in ['superadmin', 'staff'] %}
+<!-- EXPORT PHOTOS MODAL -->
+<div class="modal" id="export-photos-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)">
+  <div class="modal-box" style="background:#fff;border-radius:14px;padding:26px;width:92%;max-width:480px;box-shadow:0 20px 40px rgba(0,0,0,0.2);direction:rtl">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0;font-size:1.25rem;font-weight:bold;color:#0f172a;display:flex;align-items:center;gap:8px">
+        <svg style="width:20px;height:20px;fill:#0284c7" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+        تحميل صور الطلاب (ZIP)
+      </h3>
+      <button type="button" onclick="closeExportPhotosModal()" style="background:none;border:none;font-size:1.6rem;cursor:pointer;color:#94a3b8;line-height:1">&times;</button>
+    </div>
+    <p style="font-size:0.88rem;color:#64748b;margin-bottom:20px;line-height:1.6">
+      تنزيل أرشيف مضغوط يحوي صور الطلاب المحفوظة على السيرفر مباشرة، بأسماء أرقام الجلوس/الرقم الجامعي فقط (بدون الأسماء) مقسمة حسب الكلية وسنة القيد.
+    </p>
+
+    <div class="modal-form" style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:#334155">الكلية:</label>
+        <select id="exp-photo-college" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem">
+          <option value="all">جميع الكليات</option>
+          {% for c in colleges %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:#334155">سنة القيد:</label>
+        <select id="exp-photo-year" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem">
+          <option value="all">جميع السنوات الدراسية</option>
+          {% for y in year_range %}
+          <option value="{{ y }}">{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="exp-photo-status" style="display:none;padding:12px;border-radius:8px;font-size:0.85rem;margin-top:6px;line-height:1.5"></div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline" onclick="closeExportPhotosModal()">إلغاء</button>
+        <button type="button" class="btn btn-primary" id="exp-photo-btn" onclick="startPhotoDownload()" style="background:#0284c7;border-color:#0284c7;color:#fff;display:inline-flex;align-items:center;gap:6px">
+          <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          بدء التحميل الآن
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 let pendingDelId = null, curPage = 1;
 let loadedStudents = {};
-const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+function getCsrfToken() {
+  const m = document.querySelector('meta[name="csrf-token"]');
+  return m ? (m.getAttribute('content') || '') : '';
+}
+let csrfToken = getCsrfToken();
 const ROLE = {{ role | tojson }};
 
 function escapeHTML(str) {
@@ -1291,6 +1359,7 @@ async function submitEditStudent() {
   }
 
   const formData = new FormData();
+  formData.append('csrf_token', getCsrfToken());
   formData.append('full_name', name);
   formData.append('student_id', studentId);
   if (colEl) formData.append('college', colEl.value);
@@ -1303,7 +1372,7 @@ async function submitEditStudent() {
     const res = await fetch(`/admin/student/${sid}/edit`, {
       method: 'POST',
       headers: {
-        'X-CSRFToken': csrfToken
+        'X-CSRFToken': getCsrfToken()
       },
       body: formData
     });
@@ -1312,6 +1381,10 @@ async function submitEditStudent() {
       showToast(data.message, 'success');
       closeEditStudent();
       loadStudents(curPage);
+      cachedUsersData = null; // Clear cached users so users list reflects updated student data
+      if (typeof loadUsers === 'function') {
+        try { loadUsers(); } catch(e) {}
+      }
     } else {
       msg.style.display = 'block'; msg.style.color = 'var(--danger)'; msg.style.background = '#fff5f5';
       msg.textContent = data.message || 'حدث خطأ أثناء التعديل';
@@ -1946,19 +2019,103 @@ async function loadAudit(page = 1) {
   auditPage = page;
   const res  = await fetch('/admin/audit?page=' + page);
   const data = await res.json();
-  document.getElementById('audit-tbody').innerHTML = data.logs.length
+  const actionNames = {
+    'LOGIN': 'تسجيل دخول',
+    'LOGOUT': 'تسجيل خروج',
+    'REGISTER_STUDENT': 'تسجيل طالب',
+    'STUDENT_SELF_REGISTER': 'تسجيل ذاتي',
+    'UPDATE_PHOTO': 'تحديث صورة',
+    'EDIT_STUDENT': 'تعديل بيانات',
+    'DELETE_STUDENT': 'حذف طالب',
+    'CHANGE_PASSWORD': 'تغيير كلمة المرور',
+    'PASSWORD_RESET': 'إعادة ضبط كلمة المرور',
+    'EMAIL_VERIFIED': 'تأكيد البريد',
+    'BULK_IMPORT_STUDENT': 'استيراد بيانات'
+  };
+  const actionColors = {
+    'LOGIN': 'badge-blue',
+    'REGISTER_STUDENT': 'badge-green',
+    'STUDENT_SELF_REGISTER': 'badge-green',
+    'UPDATE_PHOTO': 'badge-gold',
+    'EDIT_STUDENT': 'badge-blue',
+    'DELETE_STUDENT': 'badge-red',
+    'CHANGE_PASSWORD': 'badge-gold',
+    'PASSWORD_RESET': 'badge-gold',
+    'EMAIL_VERIFIED': 'badge-green',
+    'BULK_IMPORT_STUDENT': 'badge-blue'
+  };
+  document.getElementById('audit-tbody').innerHTML = (data.logs && data.logs.length)
     ? data.logs.map(l => `<tr>
-        <td><span class="audit-action">${escapeHTML(l.action)}</span></td>
-        <td style="font-size:.8rem">${l.full_name ? escapeHTML(l.full_name) : '–'}</td>
+        <td><span class="badge ${actionColors[l.action] || 'badge-blue'}" style="font-size:.72rem">${escapeHTML(actionNames[l.action] || l.action)}</span></td>
+        <td style="font-size:.82rem;font-weight:600">${l.full_name ? escapeHTML(l.full_name) : '–'}</td>
         <td style="font-size:.72rem;color:var(--muted);direction:ltr">${l.email ? escapeHTML(l.email) : '–'}</td>
-        <td style="font-size:.78rem;direction:ltr">${l.target ? escapeHTML(l.target) : '–'}</td>
+        <td style="font-size:.78rem;direction:ltr;font-family:'Courier New',monospace;font-weight:600">${l.student_id ? escapeHTML(l.student_id) : (l.target ? escapeHTML(l.target) : '–')}</td>
         <td style="font-size:.72rem;color:var(--muted);direction:ltr">${fmt(l.created_at)}</td>
       </tr>`).join('')
     : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">لا توجد عمليات بعد</td></tr>';
   buildPager(data.page, data.pages, 'audit-pager', loadAudit);
 }
 
+// Export Photos Modal logic
+function openExportPhotosModal() {
+  const m = document.getElementById('export-photos-modal');
+  if (m) {
+    m.style.display = 'flex';
+    const s = document.getElementById('exp-photo-status');
+    if (s) s.style.display = 'none';
+  }
+}
+
+function closeExportPhotosModal() {
+  const m = document.getElementById('export-photos-modal');
+  if (m) m.style.display = 'none';
+}
+
+document.getElementById('export-photos-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeExportPhotosModal();
+});
+
+function startPhotoDownload() {
+  const colEl = document.getElementById('exp-photo-college');
+  const yrEl = document.getElementById('exp-photo-year');
+  const col = colEl ? colEl.value : 'all';
+  const yr = yrEl ? yrEl.value : 'all';
+  const statusEl = document.getElementById('exp-photo-status');
+  const btn = document.getElementById('exp-photo-btn');
+
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#e0f2fe';
+    statusEl.style.color = '#0369a1';
+    statusEl.textContent = 'جارٍ تحضير وضغط صور الطلاب من السيرفر… يرجى الانتظار لحين بدء التنزيل.';
+  }
+
+  if (btn) btn.disabled = true;
+
+  const url = `/admin/export-photos?college=${encodeURIComponent(col)}&year=${encodeURIComponent(yr)}`;
+  window.location.href = url;
+
+  setTimeout(() => {
+    if (btn) btn.disabled = false;
+    if (statusEl) {
+      statusEl.style.background = '#f0fdf4';
+      statusEl.style.color = '#15803d';
+      statusEl.textContent = 'تم إرسال طلب تنزيل ملف الصور بنجاح! إذا لم يبدأ التنزيل تلقائياً اضغط الزر مرة أخرى.';
+    }
+  }, 4500);
+}
+
 // Boot
-loadStudents(1);
+if (window.location.hash === '#audit') {
+  const auditBtn = document.querySelector(".tab[onclick*='audit']");
+  if (auditBtn) switchTab('audit', auditBtn);
+  else loadStudents(1);
+} else if (window.location.hash === '#users') {
+  const usersBtn = document.querySelector(".tab[onclick*='users']");
+  if (usersBtn) switchTab('users', usersBtn);
+  else loadStudents(1);
+} else {
+  loadStudents(1);
+}
 </script>
 {% endblock %}
