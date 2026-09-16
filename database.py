@@ -486,59 +486,65 @@ def init_db():
     cur  = conn.cursor()
 
     if is_use_pg():
-        # ── Migration: add missing columns & student_id_history table ──
         try:
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT UNIQUE")
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id)")
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS student_id_history (
-                    old_student_id TEXT PRIMARY KEY,
-                    new_student_id TEXT NOT NULL,
-                    created_at     TIMESTAMP DEFAULT NOW()
-                );
-                CREATE INDEX IF NOT EXISTS idx_hist_old ON student_id_history(old_student_id);
-                CREATE INDEX IF NOT EXISTS idx_hist_new ON student_id_history(new_student_id);
-            """)
-            conn.commit()
-        except Exception as e:
-            pass
-
-        # Fast check: if users table already exists, skip redundant DDL statements
-        try:
-            cur.execute("SELECT 1 FROM users LIMIT 1")
-            conn.close()
-            print("[INFO] PostgreSQL database connected and verified.")
-            return
+            conn.autocommit = True
         except Exception:
             pass
 
-        # ── Create tables + indexes ──
+        # 1. Create base tables + indexes first
         for stmt in _PG_SCHEMA.split(";"):
             stmt = stmt.strip()
             if stmt:
                 try:
                     cur.execute(stmt)
                 except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+
+        # 2. Migrations for existing deployments
+        migrations = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT UNIQUE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id)",
+        ]
+        for m in migrations:
+            try:
+                cur.execute(m)
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
                     pass
 
-        # seed super admin
-        email    = os.getenv("SUPER_ADMIN_EMAIL", "admin@university.edu.eg")
-        password = os.getenv("SUPER_ADMIN_PASSWORD")
-        if not password:
-            password = "Admin@2026!"
-            print("[WARNING] SUPER_ADMIN_PASSWORD is not set in environment. Falling back to default password.")
-        name     = "مدير النظام"
+        # 3. Seed super admin
+        try:
+            email    = os.getenv("SUPER_ADMIN_EMAIL", "admin@university.edu.eg")
+            password = os.getenv("SUPER_ADMIN_PASSWORD")
+            if not password:
+                password = "Admin@2026!"
+                print("[WARNING] SUPER_ADMIN_PASSWORD is not set in environment. Falling back to default password.")
+            name     = "مدير النظام"
 
-        cur.execute("SELECT id FROM users WHERE email=%s", (email,))
-        if not cur.fetchone():
-            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-            cur.execute(
-                "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (email, hashed, password, name, "superadmin", True, True)
-            )
+            cur.execute("SELECT id FROM users WHERE email=%s", (email,))
+            if not cur.fetchone():
+                hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+                cur.execute(
+                    "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (email, hashed, password, name, "superadmin", True, True)
+                )
+        except Exception as e:
+            print(f"[WARNING] Seeding super admin error: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
-        conn.commit()
+        try:
+            conn.autocommit = False
+        except Exception:
+            pass
         conn.close()
         print("DB initialised (PostgreSQL)")
     else:
