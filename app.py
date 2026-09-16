@@ -97,8 +97,9 @@ def add_security_headers(response):
         "font-src 'self' https://fonts.gstatic.com; "
         "frame-ancestors 'none';"
     )
-    # Strict Transport Security (HSTS) (V-023)
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Strict Transport Security (HSTS) (V-023) - only enforce when HTTPS is active
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 @app.route("/api/csrf-token", methods=["GET"])

@@ -64,10 +64,11 @@ ufw default allow outgoing
 ufw allow 22/tcp comment 'SSH'
 ufw allow 80/tcp comment 'HTTP'
 ufw allow 443/tcp comment 'HTTPS'
+ufw allow 5000/tcp comment 'Direct Web Port'
 # Explicitly ensure port 5432 is not exposed publicly
 ufw deny 5432/tcp comment 'PostgreSQL local container only'
 ufw --force enable
-echo -e "${GREEN}  ✓ UFW Firewall active: Ports 22, 80, 443 allowed. Port 5432 protected.${NC}"
+echo -e "${GREEN}  ✓ UFW Firewall active: Ports 22, 80, 443, 5000 allowed. Port 5432 protected.${NC}"
 
 # Enable Fail2ban
 systemctl enable --now fail2ban
@@ -133,9 +134,17 @@ NGINX_CONF="/etc/nginx/sites-available/bua"
 cat << 'EOF' > "$NGINX_CONF"
 server {
     listen 80;
+    listen [::]:80;
     server_name _;
 
-    client_max_body_size 10M;
+    client_max_body_size 25M;
+
+    # Gzip Compression
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/rss+xml image/svg+xml;
 
     # Security Headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -143,22 +152,40 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # Static files cached directly
+    # Static files cached directly with fallback to proxy
     location /static/ {
         alias /var/www/bua/static/;
         expires 30d;
         add_header Cache-Control "public, no-transform";
+        try_files $uri $uri/ @proxy;
     }
 
     # Proxy to Docker Web Container
     location / {
         proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_connect_timeout 60s;
         proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_buffering on;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+    }
+
+    location @proxy {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 EOF
