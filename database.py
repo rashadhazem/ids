@@ -266,6 +266,15 @@ class PooledPGConnectionWrapper:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
+    @property
+    def autocommit(self):
+        return getattr(self._conn, "autocommit", False)
+
+    @autocommit.setter
+    def autocommit(self, val):
+        if self._conn:
+            self._conn.autocommit = bool(val)
+
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
@@ -541,6 +550,10 @@ def init_db():
             except Exception:
                 pass
 
+        try:
+            conn.commit()
+        except Exception:
+            pass
         try:
             conn.autocommit = False
         except Exception:
