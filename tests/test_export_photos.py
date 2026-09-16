@@ -3,13 +3,12 @@ test_export_photos.py – Verification script for ZIP photo export functionality
 """
 import os
 import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import tempfile
 import zipfile
 from io import BytesIO
 from PIL import Image
 
-# Use project venv
-import sys
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -95,12 +94,19 @@ def run_test():
 
     print("\n✅ SUCCESS: /admin/export-photos passed all tests!")
 
-    # Clean up test student
+    # Clean up test student and file
     db = get_db()
     cur = db.cursor()
     cur.execute(f"DELETE FROM students WHERE student_id={ph()}", (test_sid,))
     db.commit()
     db.close()
+
+    saved_full = os.path.normpath(os.path.join(upload_root, "..", save_res["path"]))
+    if os.path.exists(saved_full):
+        try:
+            os.remove(saved_full)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     run_test()

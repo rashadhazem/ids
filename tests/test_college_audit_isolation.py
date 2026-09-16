@@ -2,7 +2,8 @@
 test_college_audit_isolation.py
 Verifies that college supervisors only see activities of their own college's students.
 """
-import sys
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")

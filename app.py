@@ -1,4 +1,4 @@
-import os, re, secrets, io, zipfile
+import os, re, secrets, io, zipfile, base64
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -1087,12 +1087,43 @@ def update_photo(student_id):
                    detail="photo updated via student card", ip=request.remote_addr)
 
         db.close()
-        return jsonify(success=True, message="تم تحديث الصورة ✓",
-                       new_url=result["url"])
+        return jsonify(
+            success=True,
+            message="تم تحديث الصورة بنجاح ✓",
+            url=result["url"],
+            new_url=result["url"],
+            path=result["path"]
+        )
     except Exception as e:
         db.close()
         app.logger.error(f"Error updating photo for {student_id}: {e}")
         return jsonify(success=False, message="حدث خطأ أثناء معالجة الصورة. تأكد من أن الملف المرفوع صورة صالحة وغير تالفة."), 500
+
+
+@app.route("/api/crop-preview", methods=["POST"])
+def api_crop_preview():
+    """
+    Instant preview endpoint: returns professionally cropped 400x500 face photo
+    directly as a base64 data URL.
+    """
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify(success=False, message="غير مصرح بالدخول"), 401
+
+    image_file = request.files.get("image")
+    if not image_file:
+        return jsonify(success=False, message="لم يتم إرسال أي صورة"), 400
+
+    raw_bytes = image_file.read()
+    if len(raw_bytes) > app.config["MAX_CONTENT_LENGTH"]:
+        return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
+
+    ok, face_msg, processed = process_and_validate_photo(raw_bytes, auto_crop=True)
+    if not ok:
+        return jsonify(success=False, message=face_msg), 400
+
+    b64 = base64.b64encode(processed).decode("utf-8")
+    return jsonify(success=True, preview=f"data:image/jpeg;base64,{b64}")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1232,7 +1263,10 @@ def admin_edit_student(sid):
             db.close()
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
         try:
-            processed = apply_edits(raw_img, auto_crop=True)
+            ok, face_msg, processed = process_and_validate_photo(raw_img, auto_crop=True)
+            if not ok:
+                db.close()
+                return jsonify(success=False, message=face_msg), 400
             archived = archive_old_image(s.get("image_path"), old_student_id, STATIC_ROOT, UPLOAD_FOLDER)
             res_img = save_image(processed, new_student_id, year, college, UPLOAD_FOLDER)
             new_image_path = res_img["path"]

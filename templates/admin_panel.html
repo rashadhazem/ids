@@ -1199,8 +1199,9 @@ async function loadStudents(page = 1) {
   loadedStudents = {};
   tbody.innerHTML = data.students.map(s => {
     loadedStudents[s.id] = s;
-    const imgUrl = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
+    const baseImg = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
       ? s.image_path : '/static/' + (s.image_path || '');
+    const imgUrl = baseImg ? (baseImg + (baseImg.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(s.updated_at || Date.now())) : '';
     return `<tr>
       <td><img src="${imgUrl}" class="student-thumb" onerror="this.style.opacity=0" alt=""></td>
       <td><span class="student-id-badge">${escapeHTML(s.student_id)}</span></td>
@@ -1275,8 +1276,9 @@ function openEditStudent(id) {
   if (yrEl) yrEl.value = s.year || '';
   document.getElementById('es-email').value = s.email || '';
   
-  const imgUrl = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
+  const baseImg = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
     ? s.image_path : '/static/' + (s.image_path || '');
+  const imgUrl = baseImg ? (baseImg + (baseImg.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(s.updated_at || Date.now())) : '';
   document.getElementById('es-preview').src = imgUrl;
   document.getElementById('es-image').value = '';
   
@@ -1294,8 +1296,9 @@ function openViewStudent(id) {
   const s = loadedStudents[id];
   if (!s) return;
 
-  const imgUrl = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
+  const baseImg = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
     ? s.image_path : '/static/' + (s.image_path || '');
+  const imgUrl = baseImg ? (baseImg + (baseImg.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(s.updated_at || Date.now())) : '';
   document.getElementById('vs-image').src = imgUrl;
   document.getElementById('vs-full-name').textContent = s.full_name || '—';
   document.getElementById('vs-student-id').textContent = s.student_id || '—';

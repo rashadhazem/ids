@@ -429,6 +429,20 @@ document.getElementById('image').addEventListener('change',function(){
     loadFromDataUrl(originalBytes);
     document.getElementById('upload-zone').style.display='none';
     document.getElementById('editor-wrap').classList.add('show');
+
+    // Instant professional ID crop preview
+    const fd = new FormData();
+    fd.append('image', f);
+    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+    fetch('/api/crop-preview', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken },
+      body: fd
+    }).then(res => res.json()).then(data => {
+      if (data.success && data.preview) {
+        document.getElementById('pic-preview').src = data.preview;
+      }
+    }).catch(() => {});
   };
   r.readAsDataURL(f);
 });

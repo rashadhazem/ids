@@ -133,6 +133,28 @@
   }
   .photo-ring:hover .photo-overlay { opacity: 1; }
   .photo-overlay svg { width: 28px; height: 28px; fill: white; }
+  .photo-loading {
+    position: absolute; inset: 0;
+    background: rgba(13,31,60,.84);
+    backdrop-filter: blur(4px);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    border-radius: 12px;
+    color: #fff; font-size: .68rem; font-family: 'Cairo'; font-weight: 700;
+    z-index: 10;
+    pointer-events: none;
+    text-align: center;
+    padding: 6px;
+    box-shadow: inset 0 0 12px rgba(0,0,0,.5);
+  }
+  .photo-loading.show { display: flex; }
+  .photo-spinner {
+    width: 24px; height: 24px;
+    border: 3px solid rgba(232,184,75,.3);
+    border-top-color: var(--gold2);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
   .photo-status {
     position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
     background: #1a7f3c;
@@ -443,8 +465,12 @@
       <div class="photo-ring" id="photo-ring"{% if can_edit %} onclick="document.getElementById('quick-upload').click()" style="cursor:pointer"{% else %} style="cursor:default"{% endif %}>
         <img src="{% if student.image_path.startswith('http') %}{{ student.image_path }}{% else %}/static/{{ student.image_path }}{% endif %}" alt="{{ student.full_name }}" id="card-photo">
         {% if can_edit %}
-        <div class="photo-overlay">
-          <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M18.2 4H16.4L14.8 2H9.2L7.6 4H5.8C4.8 4 4 4.8 4 5.8v12.4C4 19.2 4.8 20 5.8 20h12.4c1 0 1.8-.8 1.8-1.8V5.8C20 4.8 19.2 4 18.2 4z"/></svg>
+        <div class="photo-overlay" title="اضغط لتغيير الصورة فوراً">
+          <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M18.2 4H16.4L14.8 2H9.2L7.6 4H5.8C4.8 4 4 4.8 4 5.8v12.4C4 19.2 4.8 20 5.8 20h12.4c1 0 1.8-.8 1.8-1.8V5.8C20 4.8 19.2 4 18.2 4z"/></svg>
+        </div>
+        <div class="photo-loading" id="photo-loading">
+          <div class="photo-spinner"></div>
+          <span>جارٍ التحديث…</span>
         </div>
         {% endif %}
       </div>
@@ -740,10 +766,12 @@ wrap.addEventListener('wheel', e => {
   onZoom(next);
 }, {passive: false});
 
-// File input handlers
-function loadFile(file) {
+// ── File Upload and Instant Update Engine ──
+let currentUploadedFile = null;
+
+async function handleFileSelect(file) {
   if(!file) return;
-  if(!file.type.match(/^image\/(jpeg|jpg)$/)) {
+  if(!file.type.match(/^image\/(jpeg|jpg)$/i) && !file.name.match(/\.(jpe?g)$/i)) {
     toast('يُسمح فقط بصور JPG / JPEG', 'error');
     return;
   }
@@ -752,27 +780,116 @@ function loadFile(file) {
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = e => {
-    img = new Image();
-    img.onload = () => {
-      resetEditor();
-      initCanvas();
-      draw();
-      document.getElementById('editor-wrap').classList.add('show');
-      document.getElementById('update-btn').disabled = false;
-      document.getElementById('up-zone').style.display = 'none';
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+  currentUploadedFile = file;
+
+  // 1. Show immediate loading indicator on the card photo and update button
+  const photoLoading = document.getElementById('photo-loading');
+  if (photoLoading) photoLoading.classList.add('show');
+
+  const updateBtn = document.getElementById('update-btn');
+  const origBtnHtml = updateBtn ? updateBtn.innerHTML : '';
+  if (updateBtn) {
+    updateBtn.disabled = true;
+    updateBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" style="animation:spin .8s linear infinite;width:18px;height:18px"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+      جارٍ الرفع وقص الوجه بالذكاء الاصطناعي…
+    `;
+  }
+
+  // 2. Automatically upload and apply AI face crop right away!
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('auto_crop', '1');
+    formData.append('rotation', '0');
+    formData.append('flip_h', '0');
+    formData.append('zoom', '1.0');
+    formData.append('offset_x', '0');
+    formData.append('offset_y', '0');
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    if (csrfToken) formData.append('csrf_token', csrfToken);
+
+    const res = await fetch(`/student/${STUDENT_ID}/update-photo`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Accept': 'application/json'
+      },
+      body: formData
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      const newUrl = data.url || data.new_url;
+      const timestampedUrl = newUrl + (newUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+      // Preload image so it swaps without flicker
+      const preloader = new Image();
+      preloader.onload = () => {
+        const cardPhoto = document.getElementById('card-photo');
+        const oldSrc = cardPhoto.src;
+        cardPhoto.src = timestampedUrl;
+
+        // Update compare view
+        const oldPhoto = document.getElementById('old-photo');
+        const newCompare = document.getElementById('new-photo-compare');
+        if (oldPhoto) oldPhoto.src = oldSrc;
+        if (newCompare) newCompare.src = timestampedUrl;
+        const compareBox = document.getElementById('compare');
+        if (compareBox) compareBox.classList.add('show');
+
+        if (photoLoading) photoLoading.classList.remove('show');
+        toast('تم تحديث صورتك بنجاح ✓', 'success');
+
+        // Prepare editor with the new image in case student wants manual tweaks
+        img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          resetEditor();
+          initCanvas();
+          draw();
+          document.getElementById('editor-wrap').classList.add('show');
+          document.getElementById('up-zone').style.display = 'none';
+        };
+        img.src = timestampedUrl;
+      };
+      preloader.onerror = () => {
+        const cardPhoto = document.getElementById('card-photo');
+        cardPhoto.src = timestampedUrl;
+        if (photoLoading) photoLoading.classList.remove('show');
+        toast('تم تحديث صورتك بنجاح ✓', 'success');
+      };
+      preloader.src = timestampedUrl;
+
+    } else {
+      if (photoLoading) photoLoading.classList.remove('show');
+      toast(data.message || 'فشل تحديث الصورة', 'error');
+    }
+  } catch (err) {
+    if (photoLoading) photoLoading.classList.remove('show');
+    toast('تعذر الاتصال بالخادم. حاول مجدداً.', 'error');
+  } finally {
+    if (updateBtn) {
+      updateBtn.disabled = false;
+      updateBtn.innerHTML = `
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        حفظ التعديلات
+      `;
+    }
+  }
 }
 
 document.getElementById('new-photo-input').addEventListener('change', e => {
-  loadFile(e.target.files[0]);
+  const f = e.target.files[0];
+  e.target.value = '';
+  if(f) handleFileSelect(f);
 });
 document.getElementById('quick-upload').addEventListener('change', e => {
-  loadFile(e.target.files[0]);
+  const f = e.target.files[0];
+  e.target.value = '';
+  if(f) handleFileSelect(f);
 });
 
 // Drag & drop on upload zone
@@ -782,34 +899,41 @@ zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
 zone.addEventListener('drop', e => {
   e.preventDefault();
   zone.classList.remove('drag-over');
-  loadFile(e.dataTransfer.files[0]);
+  const f = e.dataTransfer.files[0];
+  if(f) handleFileSelect(f);
 });
 zone.addEventListener('click', () => document.getElementById('new-photo-input').click());
 
-// Save updated photo
+// Save manual adjustments
 document.getElementById('update-btn').addEventListener('click', async function() {
-  if(!img) return;
+  if(!img && !currentUploadedFile) return;
 
   const btn = this;
   const origInnerHTML = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = `
-    <svg viewBox="0 0 24 24" style="animation:spin .8s linear infinite"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-    جارٍ المعالجة والتحقق…
+    <svg viewBox="0 0 24 24" style="animation:spin .8s linear infinite;width:18px;height:18px"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+    جارٍ حفظ التعديلات…
   `;
 
+  const photoLoading = document.getElementById('photo-loading');
+  if (photoLoading) photoLoading.classList.add('show');
+
   try {
-    const rawFile = document.getElementById('new-photo-input').files[0]
+    const rawFile = currentUploadedFile
+                 || document.getElementById('new-photo-input').files[0]
                  || document.getElementById('quick-upload').files[0];
 
     const formData = new FormData();
-    formData.append('image', rawFile);
+    if (rawFile) {
+      formData.append('image', rawFile);
+    }
     formData.append('rotation', state.rot);
     formData.append('flip_h', state.flipH ? '1' : '0');
     formData.append('zoom', state.scale);
     formData.append('offset_x', state.ox);
     formData.append('offset_y', state.oy);
-    formData.append('auto_crop', '0');
+    formData.append('auto_crop', '1');
 
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     if (csrfToken) formData.append('csrf_token', csrfToken);
@@ -825,36 +949,36 @@ document.getElementById('update-btn').addEventListener('click', async function()
     const data = await res.json();
 
     if(data.success) {
-      toast(data.message, 'success');
+      toast(data.message || 'تم حفظ التعديلات بنجاح ✓', 'success');
 
-      // Update card photo
+      const newUrl = data.url || data.new_url;
+      const timestampedUrl = newUrl + (newUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+      // Update card photo immediately without page reload
       const cardPhoto = document.getElementById('card-photo');
       const oldSrc    = cardPhoto.src;
-      cardPhoto.src   = data.url + '?t=' + Date.now();
+      cardPhoto.src   = timestampedUrl;
 
       // Show comparison
-      document.getElementById('old-photo').src         = oldSrc;
-      document.getElementById('new-photo-compare').src = data.url + '?t=' + Date.now();
-      document.getElementById('compare').classList.add('show');
+      const oldPhoto = document.getElementById('old-photo');
+      const newCompare = document.getElementById('new-photo-compare');
+      if (oldPhoto) oldPhoto.src = oldSrc;
+      if (newCompare) newCompare.src = timestampedUrl;
+      const compareBox = document.getElementById('compare');
+      if (compareBox) compareBox.classList.add('show');
 
-      // Reset editor
-      document.getElementById('new-photo-input').value = '';
-      document.getElementById('quick-upload').value    = '';
-      document.getElementById('editor-wrap').classList.remove('show');
-      document.getElementById('up-zone').style.display = '';
-      img = null;
-
-      // Scroll to comparison
-      document.getElementById('compare').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (photoLoading) photoLoading.classList.remove('show');
     } else {
+      if (photoLoading) photoLoading.classList.remove('show');
       toast(data.message || 'فشل تحديث الصورة', 'error');
     }
   } catch(err) {
+    if (photoLoading) photoLoading.classList.remove('show');
     toast('تعذر الاتصال بالخادم. حاول مجدداً.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origInnerHTML;
   }
-
-  btn.disabled = !img;
-  btn.innerHTML = origInnerHTML;
 });
 
 // init canvas size on load
