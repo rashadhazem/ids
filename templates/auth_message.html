@@ -116,10 +116,11 @@
 
         {% if type=='error' %}
         <a href="{{ url_for('auth_resend_verification') }}" class="btn">إعادة إرسال رابط التفعيل</a>
-        <a href="{{ url_for('auth_login') }}" class="btn-outline">الذهاب لتسجيل الدخول</a>
+        <a href="{{ url_for('login') }}" class="btn-outline">الذهاب لتسجيل الدخول</a>
         {% else %}
-        <a href="{{ url_for('auth_login') }}" class="btn">الذهاب لتسجيل الدخول</a>
+        <a href="{{ url_for('login') }}" class="btn">الذهاب لتسجيل الدخول</a>
         {% endif %}
+
     </div>
 </body>
 </html>

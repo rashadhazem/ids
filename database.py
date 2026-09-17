@@ -3,7 +3,7 @@ database.py  –  Dual-backend DB layer with automatic local SQLite fallback
   • SQLite  when DATABASE_URL is empty or when PostgreSQL fails/times out (local dev / offline)
   • PostgreSQL  when DATABASE_URL is reachable (production)
 """
-import os, sqlite3, logging, re, requests
+import os, sqlite3, logging, re, requests, time
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -26,6 +26,8 @@ DB_URL      = os.getenv("DATABASE_URL", "")
 USE_PG      = bool(DB_URL) and HAS_PG
 PG_TIMEOUT  = int(os.getenv("PG_CONNECT_TIMEOUT", "3"))
 SQLITE_PATH = os.path.join(os.path.dirname(__file__), "instance", "students.db")
+_PG_UNAVAILABLE = False
+_PG_WARNED = False
 
 COLLEGES = [
     "كلية طب الأسنان",
@@ -52,13 +54,17 @@ ROLES = {
 
 
 def is_use_pg() -> bool:
-    global USE_PG
+    global USE_PG, _PG_UNAVAILABLE
+    if _PG_UNAVAILABLE:
+        return False
     return bool(USE_PG and HAS_PG)
 
 
 def set_use_pg(val: bool):
-    global USE_PG
+    global USE_PG, _PG_UNAVAILABLE
     USE_PG = bool(val)
+    if val:
+        _PG_UNAVAILABLE = False
 
 
 def _connect_sqlite():
@@ -85,13 +91,16 @@ def _ensure_sqlite_initialized():
         cur  = conn.cursor()
         migrations = [
             "ALTER TABLE users ADD COLUMN student_id TEXT",
-            "ALTER TABLE users ADD COLUMN password_plain TEXT",
         ]
         for m in migrations:
             try:
                 cur.execute(m)
             except Exception:
                 pass
+        try:
+            cur.execute("UPDATE users SET password_plain = NULL WHERE password_plain IS NOT NULL")
+        except Exception:
+            pass
         conn.commit()
 
         for stmt in _SQLITE_SCHEMA.split(";"):
@@ -110,8 +119,8 @@ def _ensure_sqlite_initialized():
         if not cur.fetchone():
             hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             cur.execute(
-                "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?,?)",
-                (email, hashed, password, name, "superadmin", 1, 1)
+                "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?)",
+                (email, hashed, name, "superadmin", 1, 1)
             )
             conn.commit()
         conn.close()
@@ -271,9 +280,13 @@ class PooledPGConnectionWrapper:
 
 
 _pg_pool = None
+_PG_LAST_FAILED_AT = 0
+PG_RETRY_INTERVAL = 300  # seconds cooldown before retrying down PG server
 
 def _get_pg_pool(db_url):
-    global _pg_pool
+    global _pg_pool, _PG_UNAVAILABLE, _PG_WARNED, _PG_LAST_FAILED_AT
+    if _PG_UNAVAILABLE:
+        return None
     if _pg_pool is None and HAS_PG:
         try:
             min_conn = int(os.getenv("DB_POOL_MIN", "5"))
@@ -287,19 +300,24 @@ def _get_pg_pool(db_url):
             )
             print(f"[INFO] PostgreSQL ThreadedConnectionPool initialized (min={min_conn}, max={max_conn})")
         except Exception as e:
-            print(f"[WARNING] Failed to initialize PostgreSQL pool: {e}")
+            if not _PG_WARNED:
+                print(f"[INFO] PostgreSQL connection unavailable on localhost:5432. Active database: local SQLite ({SQLITE_PATH})")
+                _PG_WARNED = True
             _pg_pool = None
+            _PG_UNAVAILABLE = True
+            _PG_LAST_FAILED_AT = time.time()
     return _pg_pool
 
 
 # ── connection factory ─────────────────────────────────────────────────────
 def get_db(force_sqlite: bool = False):
-    global USE_PG, _PG_PORT_BLOCKED, DB_URL
+    global USE_PG, _PG_PORT_BLOCKED, DB_URL, _PG_LAST_FAILED_AT, _PG_UNAVAILABLE, _PG_WARNED
+    import time
     current_db_url = os.getenv("DATABASE_URL", DB_URL)
-    is_pg_active = bool(current_db_url) and HAS_PG
+    is_pg_active = bool(current_db_url) and HAS_PG and not _PG_UNAVAILABLE
     use_neon = os.getenv("USE_NEON_HTTP", "").strip().lower() in ("true", "1", "yes")
 
-    if force_sqlite or not is_pg_active:
+    if force_sqlite or not is_pg_active or _PG_UNAVAILABLE:
         USE_PG = False
         _ensure_sqlite_initialized()
         return _connect_sqlite()
@@ -323,6 +341,11 @@ def get_db(force_sqlite: bool = False):
         except Exception as pe:
             print(f"[WARNING] Pool getconn failed ({pe}), trying direct connect...")
 
+    if _PG_UNAVAILABLE:
+        USE_PG = False
+        _ensure_sqlite_initialized()
+        return _connect_sqlite()
+
     # Fallback to direct connect if pool not initialized
     try:
         conn = psycopg2.connect(
@@ -343,8 +366,11 @@ def get_db(force_sqlite: bool = False):
             except Exception as he:
                 print(f"[WARNING] Neon HTTPS fallback failed: {he}")
 
-        print(f"[WARNING] PostgreSQL connection failed: {e}")
-        print(f"[INFO] Automatically falling back to local SQLite database: {SQLITE_PATH}")
+        _PG_LAST_FAILED_AT = time.time()
+        _PG_UNAVAILABLE = True
+        if not _PG_WARNED:
+            print(f"[INFO] PostgreSQL connection unavailable on localhost:5432. Active database: local SQLite ({SQLITE_PATH})")
+            _PG_WARNED = True
         USE_PG = False
         _ensure_sqlite_initialized()
         return _connect_sqlite()
@@ -367,7 +393,6 @@ CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     email         TEXT    NOT NULL UNIQUE,
     password_hash TEXT    NOT NULL,
-    password_plain TEXT,
     full_name     TEXT    NOT NULL,
     role          TEXT    NOT NULL DEFAULT 'staff',
     college       TEXT,
@@ -409,6 +434,20 @@ CREATE TABLE IF NOT EXISTS student_id_history (
     created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS background_jobs (
+    id            TEXT PRIMARY KEY,
+    job_type      TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    progress      INTEGER DEFAULT 0,
+    target_id     TEXT,
+    payload_json  TEXT,
+    result_json   TEXT,
+    error_message TEXT,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at    DATETIME,
+    completed_at  DATETIME
+);
+
 CREATE INDEX IF NOT EXISTS idx_student_id     ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_year           ON students(year);
 CREATE INDEX IF NOT EXISTS idx_college        ON students(college);
@@ -419,6 +458,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_user     ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_ts       ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_hist_old       ON student_id_history(old_student_id);
 CREATE INDEX IF NOT EXISTS idx_hist_new       ON student_id_history(new_student_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_status     ON background_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_target     ON background_jobs(target_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_created    ON background_jobs(created_at);
 """
 
 _PG_SCHEMA = """
@@ -426,7 +468,6 @@ CREATE TABLE IF NOT EXISTS users (
     id            SERIAL PRIMARY KEY,
     email         TEXT    NOT NULL UNIQUE,
     password_hash TEXT    NOT NULL,
-    password_plain TEXT,
     full_name     TEXT    NOT NULL,
     role          TEXT    NOT NULL DEFAULT 'staff',
     college       TEXT,
@@ -468,6 +509,20 @@ CREATE TABLE IF NOT EXISTS student_id_history (
     created_at     TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS background_jobs (
+    id            TEXT PRIMARY KEY,
+    job_type      TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    progress      INTEGER DEFAULT 0,
+    target_id     TEXT,
+    payload_json  TEXT,
+    result_json   TEXT,
+    error_message TEXT,
+    created_at    TIMESTAMP DEFAULT NOW(),
+    started_at    TIMESTAMP,
+    completed_at  TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_student_id ON students(student_id);
 CREATE INDEX IF NOT EXISTS idx_year       ON students(year);
 CREATE INDEX IF NOT EXISTS idx_college    ON students(college);
@@ -476,6 +531,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_user   ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_hist_old     ON student_id_history(old_student_id);
 CREATE INDEX IF NOT EXISTS idx_hist_new     ON student_id_history(new_student_id);
+CREATE INDEX IF NOT EXISTS idx_pg_jobs_status  ON background_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_pg_jobs_target  ON background_jobs(target_id);
+CREATE INDEX IF NOT EXISTS idx_pg_jobs_created ON background_jobs(created_at);
 """
 
 
@@ -486,11 +544,11 @@ def init_db():
     cur  = conn.cursor()
 
     if is_use_pg():
-        # ── Migration: add missing columns & student_id_history table ──
+        # ── Migration: add missing columns & student_id_history & background_jobs tables ──
         try:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT UNIQUE")
-            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_student ON users(student_id)")
+            cur.execute("UPDATE users SET password_plain = NULL WHERE password_plain IS NOT NULL")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS student_id_history (
                     old_student_id TEXT PRIMARY KEY,
@@ -499,6 +557,23 @@ def init_db():
                 );
                 CREATE INDEX IF NOT EXISTS idx_hist_old ON student_id_history(old_student_id);
                 CREATE INDEX IF NOT EXISTS idx_hist_new ON student_id_history(new_student_id);
+
+                CREATE TABLE IF NOT EXISTS background_jobs (
+                    id            TEXT PRIMARY KEY,
+                    job_type      TEXT NOT NULL,
+                    status        TEXT NOT NULL DEFAULT 'pending',
+                    progress      INTEGER DEFAULT 0,
+                    target_id     TEXT,
+                    payload_json  TEXT,
+                    result_json   TEXT,
+                    error_message TEXT,
+                    created_at    TIMESTAMP DEFAULT NOW(),
+                    started_at    TIMESTAMP,
+                    completed_at  TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_pg_jobs_status  ON background_jobs(status);
+                CREATE INDEX IF NOT EXISTS idx_pg_jobs_target  ON background_jobs(target_id);
+                CREATE INDEX IF NOT EXISTS idx_pg_jobs_created ON background_jobs(created_at);
             """)
             conn.commit()
         except Exception as e:
@@ -534,8 +609,8 @@ def init_db():
         if not cur.fetchone():
             hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             cur.execute(
-                "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (email, hashed, password, name, "superadmin", True, True)
+                "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s)",
+                (email, hashed, name, "superadmin", True, True)
             )
 
         conn.commit()
@@ -545,13 +620,16 @@ def init_db():
         # SQLite migrations
         migrations = [
             "ALTER TABLE users ADD COLUMN student_id TEXT",
-            "ALTER TABLE users ADD COLUMN password_plain TEXT",
         ]
         for m in migrations:
             try:
                 cur.execute(m)
             except Exception:
                 pass
+        try:
+            cur.execute("UPDATE users SET password_plain = NULL WHERE password_plain IS NOT NULL")
+        except Exception:
+            pass
         conn.commit()
 
         # SQLite schema
@@ -575,8 +653,8 @@ def init_db():
         if not cur.fetchone():
             hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             cur.execute(
-                "INSERT INTO users (email,password_hash,password_plain,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?,?)",
-                (email, hashed, password, name, "superadmin", 1, 1)
+                "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (?,?,?,?,?,?)",
+                (email, hashed, name, "superadmin", 1, 1)
             )
 
         conn.commit()
@@ -587,6 +665,7 @@ def init_db():
 
 # ── audit helper ───────────────────────────────────────────────────────────
 def log_action(user_id, action, target=None, detail=None, ip=None):
+    conn = None
     try:
         conn = get_db()
         cur  = conn.cursor()
@@ -596,11 +675,26 @@ def log_action(user_id, action, target=None, detail=None, ip=None):
                 (user_id, action, target, detail, ip)
             )
         else:
+            # For SQLite with foreign keys, ensure user_id exists or pass None
+            valid_uid = user_id
+            if user_id:
+                cur.execute("SELECT id FROM users WHERE id=?", (user_id,))
+                if not cur.fetchone():
+                    valid_uid = None
             cur.execute(
                 "INSERT INTO audit_log (user_id,action,target,detail,ip) VALUES (?,?,?,?,?)",
-                (user_id, action, target, detail, ip)
+                (valid_uid, action, target, detail, ip)
             )
         conn.commit()
-        conn.close()
     except Exception:
-        pass
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass

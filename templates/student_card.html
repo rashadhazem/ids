@@ -526,8 +526,9 @@
     {% if session.get('user_id') %}
     <a class="logout-btn" href="{{ url_for('auth_logout') }}">تسجيل خروج</a>
     {% else %}
-    <a class="logout-btn" href="{{ url_for('student_login') }}">تسجيل الدخول</a>
+    <a class="logout-btn" href="{{ url_for('login') }}">تسجيل الدخول</a>
     {% endif %}
+
   </div>
 </div>
 
@@ -769,6 +770,29 @@ wrap.addEventListener('wheel', e => {
 // ── File Upload and Instant Update Engine ──
 let currentUploadedFile = null;
 
+async function waitForPhotoJob(jobId, onProgress) {
+  const maxPolls = 40;
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise(r => setTimeout(r, 600));
+    try {
+      const res = await fetch(`/api/jobs/${jobId}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data.success) continue;
+      if (data.status === 'completed' && data.result) {
+        return data.result;
+      } else if (data.status === 'failed') {
+        throw new Error(data.error || 'فشلت معالجة الصورة');
+      } else if (onProgress && data.progress) {
+        onProgress(data.progress);
+      }
+    } catch(err) {
+      if (err.message && (err.message.includes('فشلت') || err.message.includes('وجه'))) throw err;
+    }
+  }
+  throw new Error('استغرقت معالجة الصورة وقتاً طويلاً. يُرجى تحديث الصفحة.');
+}
+
 async function handleFileSelect(file) {
   if(!file) return;
   if(!file.type.match(/^image\/(jpeg|jpg)$/i) && !file.name.match(/\.(jpe?g)$/i)) {
@@ -819,7 +843,22 @@ async function handleFileSelect(file) {
       body: formData
     });
 
-    const data = await res.json();
+    let data = await res.json();
+
+    // If job was offloaded to background worker, poll until completion
+    if (data.success && data.async_job && data.job_id) {
+      if (updateBtn) {
+        updateBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" style="animation:spin .8s linear infinite;width:18px;height:18px"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+          معالجة الصورة في الخلفية (<span id="bg-prog">15%</span>)…
+        `;
+      }
+      const jobResult = await waitForPhotoJob(data.job_id, (p) => {
+        const pEl = document.getElementById('bg-prog');
+        if (pEl) pEl.textContent = p + '%';
+      });
+      data = jobResult;
+    }
 
     if (data.success) {
       const newUrl = data.url || data.new_url;
@@ -946,7 +985,19 @@ document.getElementById('update-btn').addEventListener('click', async function()
       body: formData
     });
 
-    const data = await res.json();
+    let data = await res.json();
+
+    if (data.success && data.async_job && data.job_id) {
+      btn.innerHTML = `
+        <svg viewBox="0 0 24 24" style="animation:spin .8s linear infinite;width:18px;height:18px"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+        معالجة الصورة في الخلفية (<span id="manual-bg-prog">15%</span>)…
+      `;
+      const jobResult = await waitForPhotoJob(data.job_id, (p) => {
+        const pEl = document.getElementById('manual-bg-prog');
+        if (pEl) pEl.textContent = p + '%';
+      });
+      data = jobResult;
+    }
 
     if(data.success) {
       toast(data.message || 'تم حفظ التعديلات بنجاح ✓', 'success');

@@ -49,16 +49,16 @@ def test_audit_scoping():
 
     # Insert user accounts for both students
     cur.execute(
-        f"INSERT INTO users (email, password_hash, password_plain, full_name, role, college, student_id, is_active, email_verified) VALUES ({','.join([ph()]*9)})",
-        (s1_email, "hash1", s1_id, s1_name, "student", eng_col, s1_id, True, True)
+        f"INSERT INTO users (email, password_hash, full_name, role, college, student_id, is_active, email_verified) VALUES ({','.join([ph()]*8)})",
+        (s1_email, "hash1", s1_name, "student", eng_col, s1_id, True, True)
     )
     cur.execute(f"SELECT id FROM users WHERE email={ph()}", (s1_email,))
     u1_id = cur.fetchone()
     u1_id = u1_id["id"] if isinstance(u1_id, dict) else u1_id[0]
 
     cur.execute(
-        f"INSERT INTO users (email, password_hash, password_plain, full_name, role, college, student_id, is_active, email_verified) VALUES ({','.join([ph()]*9)})",
-        (s2_email, "hash2", s2_id, s2_name, "student", dent_col, s2_id, True, True)
+        f"INSERT INTO users (email, password_hash, full_name, role, college, student_id, is_active, email_verified) VALUES ({','.join([ph()]*8)})",
+        (s2_email, "hash2", s2_name, "student", dent_col, s2_id, True, True)
     )
     cur.execute(f"SELECT id FROM users WHERE email={ph()}", (s2_email,))
     u2_id = cur.fetchone()

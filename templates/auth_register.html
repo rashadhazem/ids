@@ -100,7 +100,7 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
       <div>
         {{ success }}
         <div style="margin-top:8px">
-          <a href="{{ url_for('student_login') }}" style="color:#1a3a6b;font-weight:700;text-decoration:underline">سجّل الدخول من هنا</a>
+          <a href="{{ url_for('login') }}" style="color:#1a3a6b;font-weight:700;text-decoration:underline">سجّل الدخول من هنا</a>
           &nbsp;|&nbsp;
           <a href="{{ url_for('auth_resend_verification', email=registered_email or '') }}" style="color:#276749;font-weight:700;text-decoration:underline">لم يصلك البريد؟ إعادة الإرسال</a>
         </div>
@@ -127,8 +127,9 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
     </div>
     <button type="submit" class="btn">إنشاء الحساب</button>
     <div class="links">
-      <a href="{{ url_for('student_login') }}">لديك حساب بالفعل؟ سجّل الدخول</a>
+      <a href="{{ url_for('login') }}">لديك حساب بالفعل؟ سجّل الدخول</a>
     </div>
+
   </form>
 </div>
 </body>

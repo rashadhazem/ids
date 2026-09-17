@@ -40,43 +40,47 @@ try:
 except Exception:
     pass
 
-_YUNET_DETECTOR = None
+import threading
+
+_YUNET_LOCAL = threading.local()
 _YUNET_MODEL_NAME = "face_detection_yunet_2023mar.onnx"
+_YUNET_MODEL_RESOLVED_PATH = None
 
 def _get_yunet_detector():
-    """Load or initialize OpenCV YuNet deep learning face detector."""
-    global _YUNET_DETECTOR
-    if _YUNET_DETECTOR is not None:
-        return _YUNET_DETECTOR
+    """Load or initialize OpenCV YuNet deep learning face detector per thread (Thread-Safe)."""
+    global _YUNET_MODEL_RESOLVED_PATH
+    if hasattr(_YUNET_LOCAL, "detector") and _YUNET_LOCAL.detector is not None:
+        return _YUNET_LOCAL.detector
 
-    candidate_paths = [
-        os.path.join(os.path.dirname(__file__), "models", _YUNET_MODEL_NAME),
-        os.path.join(os.path.dirname(__file__), _YUNET_MODEL_NAME),
-        os.path.join(os.getcwd(), "models", _YUNET_MODEL_NAME),
-        os.path.join(os.getcwd(), _YUNET_MODEL_NAME),
-    ]
-    model_path = None
-    for p in candidate_paths:
-        if os.path.exists(p) and os.path.getsize(p) > 100000:
-            model_path = p
-            break
+    if _YUNET_MODEL_RESOLVED_PATH is None:
+        candidate_paths = [
+            os.path.join(os.path.dirname(__file__), "models", _YUNET_MODEL_NAME),
+            os.path.join(os.path.dirname(__file__), _YUNET_MODEL_NAME),
+            os.path.join(os.getcwd(), "models", _YUNET_MODEL_NAME),
+            os.path.join(os.getcwd(), _YUNET_MODEL_NAME),
+        ]
+        for p in candidate_paths:
+            if os.path.exists(p) and os.path.getsize(p) > 100000:
+                _YUNET_MODEL_RESOLVED_PATH = p
+                break
 
-    if not model_path:
+    if not _YUNET_MODEL_RESOLVED_PATH:
         return None
 
     try:
         if hasattr(cv2, "FaceDetectorYN"):
-            _YUNET_DETECTOR = cv2.FaceDetectorYN.create(
-                model_path, "", (320, 320),
+            _YUNET_LOCAL.detector = cv2.FaceDetectorYN.create(
+                _YUNET_MODEL_RESOLVED_PATH, "", (320, 320),
                 score_threshold=0.5,
                 nms_threshold=0.3,
                 top_k=5000
             )
+            return _YUNET_LOCAL.detector
     except Exception as e:
-        print(f"Warning: Failed to create YuNet detector from {model_path}: {e}")
-        _YUNET_DETECTOR = None
+        print(f"Warning: Failed to create thread-local YuNet detector from {_YUNET_MODEL_RESOLVED_PATH}: {e}")
+        _YUNET_LOCAL.detector = None
 
-    return _YUNET_DETECTOR
+    return None
 
 
 def _fix_exif_rotation(pil_img: Image.Image) -> Image.Image:
@@ -571,18 +575,22 @@ def save_image(
     with open(full_path, "wb") as f:
         f.write(image_bytes)
 
-    # Optional background sync to Google Drive (never blocks student upload on VPS)
+    # Optional background sync to Google Drive (managed by worker pool)
     if os.getenv("ENABLE_GDRIVE_SYNC", "false").lower() == "true":
         try:
-            if is_gdrive_configured():
-                import threading
-                threading.Thread(
-                    target=upload_to_gdrive,
-                    args=(image_bytes, year, college, filename),
-                    daemon=True
-                ).start()
-        except Exception as e:
-            print(f"[GDrive Async] Upload dispatch error: {e}")
+            from background_worker import submit_async_gdrive_sync
+            submit_async_gdrive_sync(image_bytes, year, college, filename)
+        except Exception:
+            try:
+                if is_gdrive_configured():
+                    import threading
+                    threading.Thread(
+                        target=upload_to_gdrive,
+                        args=(image_bytes, year, college, filename),
+                        daemon=True
+                    ).start()
+            except Exception as e:
+                print(f"[GDrive Async] Upload dispatch error: {e}")
 
     rel_path = os.path.relpath(full_path, os.path.join(upload_root, "..")).replace(
         "\\", "/"
@@ -604,7 +612,7 @@ def archive_old_image(
 ) -> str | None:
     """
     Move old image to old/ subdirectory.
-    Also archives the old photo on Google Drive.
+    Also archives the old photo on Google Drive asynchronously.
     Only keeps one old photo ({student_id}_old.jpg) in the old folder.
     Returns new relative path or None if file not found.
     """
@@ -618,10 +626,14 @@ def archive_old_image(
     year, college = _extract_year_and_college(old_rel_path)
     old_filename = f"{student_id}_old.jpg"
 
-    # Mirror archive to Google Drive (keeps only one old photo per student)
+    # Mirror archive to Google Drive asynchronously (keeps only one old photo per student)
     try:
         if is_gdrive_configured() and year and college:
-            archive_in_gdrive(student_id, year, college, old_filename)
+            try:
+                from background_worker import submit_async_gdrive_archive
+                submit_async_gdrive_archive(student_id, year, college, old_filename)
+            except Exception:
+                archive_in_gdrive(student_id, year, college, old_filename)
     except Exception as e:
         print(f"[GDrive] Failed to archive old image: {e}")
 

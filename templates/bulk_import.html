@@ -273,18 +273,49 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     const data = await res.json();
 
     clearInterval(timer);
-    bar.style.width = '100%'; pct.textContent = '100%';
 
-    if (data.success) {
-      const r = data.results;
+    let r = data.results;
+
+    // If job was dispatched to background worker, track actual real-time progress
+    if (data.success && data.async_job && data.job_id) {
+      btxt.textContent = 'معالجة في الخلفية…';
+      while (true) {
+        await new Promise(resTimeout => setTimeout(resTimeout, 800));
+        try {
+          const pollRes = await fetch(`/api/jobs/${data.job_id}`);
+          const pollData = await pollRes.json();
+          if (pollData.success) {
+            const prog = pollData.progress || 10;
+            bar.style.width = prog + '%';
+            pct.textContent = prog + '%';
+            if (pollData.status === 'completed') {
+              r = pollData.result;
+              bar.style.width = '100%';
+              pct.textContent = '100%';
+              break;
+            } else if (pollData.status === 'failed') {
+              throw new Error(pollData.error || 'فشل استيراد البيانات في الخلفية');
+            }
+          }
+        } catch (pollErr) {
+          if (pollErr.message && (pollErr.message.includes('فشل') || pollErr.message.includes('خطأ'))) {
+            throw pollErr;
+          }
+        }
+      }
+    } else {
+      bar.style.width = '100%'; pct.textContent = '100%';
+    }
+
+    if (r) {
       document.getElementById('res-created').textContent = r.created;
       document.getElementById('res-skipped').textContent = r.skipped;
       document.getElementById('res-errors').textContent  = r.errors.length;
 
       // Preview list
       const list = document.getElementById('res-list');
-      const rows = r.preview.slice(0, 50).map(s => {
-        const cls  = s.status === 'تم الإنشاء' ? 'ok' : s.status === 'موجود مسبقاً' ? 'skip' : 'err';
+      const rows = (r.preview || []).slice(0, 50).map(s => {
+        const cls  = s.status && s.status.includes('تم الإنشاء') ? 'ok' : s.status === 'موجود مسبقاً' ? 'skip' : 'err';
         const icon = cls === 'ok'
           ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'
           : cls === 'skip'
@@ -297,7 +328,7 @@ document.getElementById('import-btn').addEventListener('click', async () => {
         </div>`;
       }).join('');
       list.innerHTML = rows;
-      if (r.errors.length) {
+      if (r.errors && r.errors.length) {
         list.innerHTML += r.errors.map(e =>
           `<div class="result-row err"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg><span>${e}</span></div>`
         ).join('');
@@ -307,11 +338,11 @@ document.getElementById('import-btn').addEventListener('click', async () => {
       document.getElementById('results-card').scrollIntoView({ behavior: 'smooth' });
       showToast(`✅ تم: ${r.created} طالب جديد، ${r.skipped} متخطي`, 'success');
     } else {
-      showToast(data.message, 'error');
+      showToast(data.message || 'حدث خطأ أثناء معالجة الملف', 'error');
     }
   } catch (err) {
     clearInterval(timer);
-    showToast('خطأ في الاتصال بالخادم', 'error');
+    showToast(err.message || 'خطأ في الاتصال بالخادم', 'error');
   }
 
   btn.disabled = false; sp.style.display = 'none'; btxt.textContent = 'استيراد البيانات';

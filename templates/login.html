@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تسجيل الدخول الموحد – نظام التسجيل الجامعي</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+}
+body{
+  font-family:'Cairo',sans-serif;
+  background:linear-gradient(135deg,#071428 0%,#0d1f3c 45%,#1a3a6b 100%);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px 16px;
+  position:relative;
+}
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background:radial-gradient(ellipse at 30% 40%,rgba(232,184,75,.09) 0%,transparent 60%);
+  pointer-events:none;
+}
+.login-container{
+  width:100%;
+  max-width:440px;
+  position:relative;
+  z-index:2;
+}
+.card{
+  background:#fff;
+  border-radius:24px;
+  overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.45);
+  animation:slideUp .4s ease-out;
+  border:1px solid rgba(255,255,255,.1);
+}
+@keyframes slideUp{
+  from{opacity:0;transform:translateY(24px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.card-top{
+  background:linear-gradient(135deg,#0d1f3c 0%,#152e59 100%);
+  padding:34px 28px 26px;
+  text-align:center;
+  position:relative;
+}
+.logo-box{
+  width:62px;
+  height:62px;
+  background:rgba(232,184,75,.15);
+  border:2px solid rgba(232,184,75,.4);
+  border-radius:18px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:14px;
+  box-shadow:0 8px 24px rgba(232,184,75,.2);
+}
+.logo-box svg{
+  width:32px;
+  height:32px;
+  fill:#e8b84b;
+}
+.card-top h1{
+  color:#fff;
+  font-size:1.35rem;
+  font-weight:900;
+  letter-spacing:-.2px;
+}
+.card-top p{
+  color:rgba(255,255,255,.65);
+  font-size:.82rem;
+  margin-top:6px;
+  font-family:'Tajawal',sans-serif;
+}
+.portal-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:20px;
+  padding:4px 12px;
+  margin-top:12px;
+  font-size:.72rem;
+  color:#f0f4f9;
+}
+.portal-badge span.dot{
+  width:7px;
+  height:7px;
+  background:#10b981;
+  border-radius:50%;
+  display:inline-block;
+  box-shadow:0 0 6px #10b981;
+}
+form{
+  padding:28px;
+}
+.role-tabs-hint{
+  background:#f1f5f9;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  padding:10px 14px;
+  margin-bottom:20px;
+  font-size:.78rem;
+  color:#475569;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  line-height:1.45;
+}
+.role-tabs-hint svg{
+  width:18px;
+  height:18px;
+  fill:#1a3a6b;
+  flex-shrink:0;
+}
+.field{
+  margin-bottom:18px;
+}
+label{
+  font-size:.84rem;
+  font-weight:700;
+  color:#0d1f3c;
+  display:block;
+  margin-bottom:7px;
+}
+.input-wrapper{
+  position:relative;
+}
+.input-wrapper input{
+  width:100%;
+  padding:12px 14px 12px 42px;
+  border:1.5px solid #dce3ef;
+  border-radius:12px;
+  font-family:'Cairo',sans-serif;
+  font-size:.9rem;
+  color:#0d1f3c;
+  background:#fbfcfe;
+  outline:none;
+  transition:all .2s;
+}
+.input-wrapper input:focus{
+  border-color:#1a3a6b;
+  box-shadow:0 0 0 3px rgba(26,58,107,.12);
+  background:#fff;
+}
+.input-wrapper svg.field-icon{
+  position:absolute;
+  left:14px;
+  top:50%;
+  transform:translateY(-50%);
+  width:18px;
+  height:18px;
+  fill:#94a3b8;
+  pointer-events:none;
+}
+.toggle-pw{
+  position:absolute;
+  left:12px;
+  top:50%;
+  transform:translateY(-50%);
+  background:none;
+  border:none;
+  cursor:pointer;
+  padding:4px;
+  color:#64748b;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.toggle-pw:hover{
+  color:#0d1f3c;
+}
+.error-box{
+  background:#fef2f2;
+  border:1px solid #fecaca;
+  color:#b91c1c;
+  border-radius:12px;
+  padding:12px 14px;
+  font-size:.84rem;
+  margin-bottom:18px;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  line-height:1.5;
+}
+.error-box svg{
+  width:18px;
+  height:18px;
+  fill:currentColor;
+  flex-shrink:0;
+  margin-top:2px;
+}
+.btn-submit{
+  width:100%;
+  padding:13px;
+  background:linear-gradient(135deg,#0d1f3c 0%,#1a3a6b 100%);
+  color:#fff;
+  border:none;
+  border-radius:12px;
+  font-size:.98rem;
+  font-weight:700;
+  font-family:'Cairo',sans-serif;
+  cursor:pointer;
+  transition:all .2s;
+  box-shadow:0 6px 18px rgba(13,31,60,.25);
+}
+.btn-submit:hover{
+  opacity:.94;
+  transform:translateY(-1px);
+  box-shadow:0 8px 22px rgba(13,31,60,.35);
+}
+.btn-submit:active{
+  transform:translateY(0);
+}
+.links-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid #f1f5f9;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.links-row a{
+  font-size:.8rem;
+  color:#64748b;
+  text-decoration:none;
+  font-family:'Tajawal',sans-serif;
+  font-weight:500;
+  transition:color .2s;
+}
+.links-row a:hover{
+  color:#1a3a6b;
+  text-decoration:underline;
+}
+footer{
+  color:rgba(255,255,255,.35);
+  font-size:.74rem;
+  text-align:center;
+  margin-top:22px;
+  font-family:'Tajawal',sans-serif;
+}
+footer a{
+  color:#e8b84b;
+  text-decoration:none;
+  font-weight:600;
+}
+footer a:hover{
+  text-decoration:underline;
+}
+</style>
+</head>
+<body>
+
+<div class="login-container">
+  <div class="card">
+    <div class="card-top">
+      <div class="logo-box">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+        </svg>
+      </div>
+      <h1>بوابة تسجيل الدخول الموحدة</h1>
+      <p>جامعة بدر بالقاهرة – نظام القيد وإدارة الهوية الجامعية</p>
+      <div class="portal-badge">
+        <span class="dot"></span>
+        <span>بوابة آمنة وموحدة لجميع الطلاب ومنسوبي الجامعة</span>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('login') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      {% if error %}
+      <div class="error-box">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+        <div>
+          {{ error }}
+          {% if unverified_email or "تفعيل" in error %}
+          <div style="margin-top:6px">
+            <a href="{{ url_for('auth_resend_verification', email=unverified_email or '') }}" style="color:#b91c1c;font-weight:700;text-decoration:underline">إعادة إرسال رابط التفعيل الآن ←</a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="role-tabs-hint">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <div>
+          <strong>تسجيل دخول مباشر:</strong> للطلاب (بالرقم الجامعي أو البريد)، وللمشرفين والإدارة (بالبريد الجامعي).
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="identifier">الرقم الجامعي أو البريد الإلكتروني</label>
+        <div class="input-wrapper">
+          <input type="text" id="identifier" name="identifier" required autofocus placeholder="مثال: 2024001001 أو user@{{ domain }}" autocomplete="username" value="{{ identifier_val or '' }}">
+          <svg class="field-icon" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="password">كلمة المرور</label>
+        <div class="input-wrapper">
+          <input type="password" id="password" name="password" required placeholder="••••••••" autocomplete="current-password">
+          <button type="button" class="toggle-pw" onclick="togglePasswordVisibility()" title="إظهار / إخفاء كلمة المرور">
+            <svg id="eye-icon" style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-submit">تسجيل الدخول</button>
+
+      <div class="links-row">
+        <a href="{{ url_for('auth_forgot') }}">نسيت كلمة المرور؟</a>
+        <a href="{{ url_for('auth_register') }}">تسجيل ذاتي لطالب جديد</a>
+      </div>
+    </form>
+  </div>
+
+  <footer>
+    <p>© 2026 جامعة بدر بالقاهرة – كافة الحقوق محفوظة</p>
+  </footer>
+</div>
+
+<script>
+function togglePasswordVisibility() {
+  const pwInput = document.getElementById('password');
+  const eyeIcon = document.getElementById('eye-icon');
+  if (pwInput.type === 'password') {
+    pwInput.type = 'text';
+    eyeIcon.style.opacity = '0.5';
+  } else {
+    pwInput.type = 'password';
+    eyeIcon.style.opacity = '1';
+  }
+}
+</script>
+</body>
+</html>

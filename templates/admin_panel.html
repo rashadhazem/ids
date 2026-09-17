@@ -1022,6 +1022,44 @@
   </div>
 </div>
 
+<!-- RESET STUDENT PASSWORD MODAL -->
+<div class="modal-bg" id="reset-student-pw-modal">
+  <div class="modal" style="max-width:440px;text-align:right">
+    <h3 style="text-align:right;margin-bottom:12px">إعادة تعيين كلمة مرور الطالب</h3>
+    <p id="rsp-student-info" style="font-size:.82rem;color:var(--blue);margin-bottom:14px;background:#f0f4f9;padding:8px 12px;border-radius:8px"></p>
+    <div class="modal-form">
+      <input type="hidden" id="rsp-sid">
+      <div class="field">
+        <label>كلمة المرور الجديدة (أو اتركها فارغة للتوليد التلقائي)</label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="rsp-password" placeholder="اتركها فارغة للتوليد التلقائي أو 6 أحرف على الأقل" style="padding-left:75px">
+          <div style="position:absolute;left:8px;display:flex;gap:4px">
+            <button type="button" onclick="togglePwVisibility('rsp-password', this)" class="btn btn-outline btn-sm" style="padding:4px 7px;font-size:.7rem" title="إظهار/إخفاء">👁</button>
+            <button type="button" onclick="generateRandomPw('rsp-password')" class="btn btn-outline btn-sm" style="padding:4px 7px;font-size:.7rem" title="توليد كلمة مرور">🎲</button>
+          </div>
+        </div>
+      </div>
+      <div id="rsp-msg" style="font-size:.82rem;padding:8px 11px;border-radius:7px;margin-bottom:6px;display:none"></div>
+      
+      <!-- Result Box to show new generated password to supervisor -->
+      <div id="rsp-result-box" style="display:none;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:12px;margin-top:10px;text-align:center">
+        <div style="font-size:.82rem;color:#065f46;font-weight:700;margin-bottom:6px">تم تعيين كلمة المرور بنجاح:</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+          <code id="rsp-new-pw-val" style="font-family:monospace;font-size:1.1rem;font-weight:700;color:#047857;background:#fff;padding:4px 12px;border-radius:6px;border:1px solid #6ee7b7"></code>
+          <button type="button" class="btn btn-sm btn-outline" onclick="copyPassword(document.getElementById('rsp-new-pw-val').textContent, this)" style="padding:4px 8px;font-size:.74rem">📋 نسخ</button>
+        </div>
+        <div style="font-size:.75rem;color:#047857;margin-top:6px">يرجى تسليم كلمة المرور للطالب ليتمكن من تسجيل الدخول</div>
+      </div>
+    </div>
+    <div class="modal-actions" id="rsp-actions">
+      <button class="btn btn-outline" style="flex:1" onclick="closeResetStudentPw()">إغلاق</button>
+      <button class="btn btn-primary" style="flex:1" id="reset-student-pw-btn" onclick="submitResetStudentPw()">
+        تعيين كلمة المرور
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- EDIT USER / SUPERVISOR MODAL -->
 <div class="modal-bg" id="edit-user-modal">
   <div class="modal" style="max-width:460px;text-align:right">
@@ -1221,6 +1259,12 @@ async function loadStudents(page = 1) {
               <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
             </svg>
             تعديل
+          </button>
+          <button onclick="openResetStudentPw(${s.id}, '${escapeHTML(s.full_name)}', '${escapeHTML(s.student_id)}')" class="btn btn-outline btn-sm" style="color:#0f766e;border-color:#99f6e4;background:#f0fdfa" title="إعادة تعيين كلمة مرور الطالب">
+            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+              <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
+            </svg>
+            كلمة المرور
           </button>
           ${ROLE === 'superadmin' ? `
           <button onclick="confirmDel(${s.id})" class="btn btn-sm"
@@ -1511,8 +1555,6 @@ function userCard(u, rl) {
     ? `<span class="uc-status-pill unverified"><span class="status-dot"></span>غير مفعّل</span>`
     : `<span class="uc-status-pill active"><span class="status-dot"></span>نشط</span>`;
 
-  const pwPlain = u.password_plain || '—';
-
   return `
     <div class="user-card-v2">
       <!-- Head: Avatar, User Details, Status -->
@@ -1538,17 +1580,11 @@ function userCard(u, rl) {
           </span>` : ''}
       </div>
 
-      <!-- Password Credentials Strip -->
-      <div class="uc-password-box">
+      <!-- Security Protection Badge -->
+      <div class="uc-password-box" style="background:#f8fafc;border:1px dashed #cbd5e1;justify-content:center">
         <div style="display:flex;align-items:center;gap:6px">
-          <span style="color:var(--muted);font-size:.72rem">🔑 كلمة المرور:</span>
-          <span class="uc-pw-val">${escapeHTML(pwPlain)}</span>
+          <span style="color:#0f766e;font-size:.74rem;font-weight:700">🔒 كلمة المرور محمية ومشفرة (Bcrypt)</span>
         </div>
-        ${pwPlain !== '—' ? `
-          <button type="button" class="uc-pw-copy-btn" onclick="copyPassword('${escapeHTML(pwPlain)}', this)" title="نسخ كلمة المرور إلى الحافظة">
-            <svg style="width:11px;height:11px;fill:currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-            نسخ
-          </button>` : ''}
       </div>
 
       <!-- Action Toolbar -->
@@ -1600,8 +1636,7 @@ function renderUsersList() {
       const matchEmail = (u.email || '').toLowerCase().includes(q);
       const matchCollege = (u.college || '').toLowerCase().includes(q);
       const matchSid = (u.student_id || '').toLowerCase().includes(q);
-      const matchPw = (u.password_plain || '').toLowerCase().includes(q);
-      if (!matchName && !matchEmail && !matchCollege && !matchSid && !matchPw) return false;
+      if (!matchName && !matchEmail && !matchCollege && !matchSid) return false;
     }
     return true;
   });
@@ -1641,7 +1676,7 @@ function renderUsersList() {
             <span class="badge badge-blue" style="font-size:.75rem">${students.length} طالب</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;color:var(--blue);font-size:.78rem;font-weight:600">
-            <span>عرض الطلاب وكلمات المرور</span>
+            <span>عرض الطلاب</span>
             <span class="stu-chevron ${isSearching ? 'open' : ''}" id="${safeChevronId}">▾</span>
           </div>
         </div>
@@ -1649,7 +1684,6 @@ function renderUsersList() {
         <div id="${safeColId}" class="stu-list-grid" style="display:${isSearching ? 'grid' : 'none'}">
           ${students.map(s => {
             const sid = escapeHTML(s.student_id || '—');
-            const pw = escapeHTML(s.password_plain || '—');
             return `
               <div class="stu-card-item">
                 <div class="stu-card-top">
@@ -1659,18 +1693,10 @@ function renderUsersList() {
                   </div>
                   <span class="badge badge-blue" style="font-family:monospace;font-size:.75rem;direction:ltr">${sid}</span>
                 </div>
-                <div class="stu-card-bottom">
-                  <div style="display:flex;align-items:center;gap:6px">
-                    <span class="badge" style="background:#f1f5f9;color:#0d1f3c;font-family:monospace;direction:ltr;border:1px solid #cbd5e1" title="كلمة المرور">
-                      🔑 ${pw}
-                    </span>
-                    ${pw !== '—' ? `
-                      <button type="button" onclick="copyPassword('${pw}', this)" class="btn btn-sm btn-outline" style="padding:2px 7px;font-size:.68rem" title="نسخ كلمة المرور">
-                        📋 نسخ
-                      </button>` : ''}
-                  </div>
-                  <button type="button" onclick="openResetUserPw(${s.id}, '${escapeHTML(s.full_name)}', '${escapeHTML(s.email)}')" class="btn btn-sm btn-outline" style="padding:3px 8px;font-size:.7rem" title="تغيير كلمة المرور">
-                    🔑 تغيير
+                <div class="stu-card-bottom" style="justify-content:space-between">
+                  <span style="color:#0f766e;font-size:.72rem;font-weight:600">🔒 كلمة المرور مشفرة</span>
+                  <button type="button" onclick="openResetUserPw(${s.id}, '${escapeHTML(s.full_name)}', '${escapeHTML(s.email)}')" class="btn btn-sm btn-outline" style="padding:3px 10px;font-size:.72rem;color:#1a3a6b;border-color:#cbd5e1" title="إعادة تعيين كلمة المرور">
+                    🔑 إعادة تعيين
                   </button>
                 </div>
               </div>
@@ -2013,6 +2039,108 @@ async function submitResetUserPw() {
     msg.textContent = 'تعذر الاتصال بالخادم';
   } finally {
     btn.disabled = false; btn.textContent = 'حفظ كلمة المرور';
+  }
+}
+
+// Copy Password to Clipboard
+function copyPassword(text, btn) {
+  if (!navigator.clipboard) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  } else {
+    navigator.clipboard.writeText(text);
+  }
+  if (btn) {
+    const oldText = btn.textContent;
+    btn.textContent = '✓ تم النسخ';
+    setTimeout(() => { btn.textContent = oldText; }, 2000);
+  }
+}
+
+// Reset Student Password (staff / admin / superadmin)
+function openResetStudentPw(sid, name, studentId) {
+  const modal = document.getElementById('reset-student-pw-modal');
+  if (!modal) return;
+  document.getElementById('rsp-sid').value = sid;
+  document.getElementById('rsp-student-info').textContent = `إعادة ضبط كلمة مرور: ${name} (كود: ${studentId})`;
+  document.getElementById('rsp-password').value = '';
+  document.getElementById('rsp-msg').style.display = 'none';
+  document.getElementById('rsp-result-box').style.display = 'none';
+  const btn = document.getElementById('reset-student-pw-btn');
+  if (btn) {
+    btn.style.display = 'inline-flex';
+    btn.disabled = false;
+    btn.textContent = 'تعيين كلمة المرور';
+  }
+  modal.classList.add('open');
+}
+
+function closeResetStudentPw() {
+  document.getElementById('reset-student-pw-modal')?.classList.remove('open');
+}
+
+document.getElementById('reset-student-pw-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeResetStudentPw();
+});
+
+async function submitResetStudentPw() {
+  const sid = document.getElementById('rsp-sid').value;
+  const pw = document.getElementById('rsp-password').value.trim();
+  const btn = document.getElementById('reset-student-pw-btn');
+  const msg = document.getElementById('rsp-msg');
+  const resultBox = document.getElementById('rsp-result-box');
+  const resultVal = document.getElementById('rsp-new-pw-val');
+
+  if (pw && pw.length < 6) {
+    msg.style.display = 'block';
+    msg.style.color = 'var(--danger)';
+    msg.style.background = '#fff5f5';
+    msg.textContent = 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'جارٍ التعيين…';
+  msg.style.display = 'none';
+  resultBox.style.display = 'none';
+
+  try {
+    const res = await fetch(`/admin/student/${sid}/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({ new_password: pw })
+    });
+    const data = await res.json();
+    msg.style.display = 'block';
+    msg.style.color = data.success ? 'var(--success)' : 'var(--danger)';
+    msg.style.background = data.success ? '#f0fff4' : '#fff5f5';
+    msg.textContent = data.message;
+
+    if (data.success) {
+      showToast(data.message, 'success');
+      if (data.new_password) {
+        resultVal.textContent = data.new_password;
+        resultBox.style.display = 'block';
+        btn.style.display = 'none';
+      } else {
+        setTimeout(closeResetStudentPw, 1500);
+      }
+    }
+  } catch (err) {
+    msg.style.display = 'block';
+    msg.style.color = 'var(--danger)';
+    msg.style.background = '#fff5f5';
+    msg.textContent = 'تعذر الاتصال بالخادم';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'تعيين كلمة المرور';
   }
 }
 

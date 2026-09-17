@@ -69,8 +69,6 @@ class TestInstantPhotoUpdate(unittest.TestCase):
                 os.remove(test_file)
             except Exception:
                 pass
-        db.commit()
-        db.close()
         self.app_context.pop()
 
     def test_instant_photo_update_api(self):

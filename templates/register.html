@@ -433,7 +433,7 @@ document.getElementById('image').addEventListener('change',function(){
     // Instant professional ID crop preview
     const fd = new FormData();
     fd.append('image', f);
-    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || document.querySelector('input[name="csrf_token"]')?.value || '';
     fetch('/api/crop-preview', {
       method: 'POST',
       headers: { 'X-CSRFToken': csrfToken },

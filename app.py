@@ -26,6 +26,11 @@ from image_processor import (detect_faces, apply_edits, face_detected, save_imag
                               archive_old_image, move_student_images_locally,
                               TARGET_W, TARGET_H, validate_single_person,
                               process_and_validate_photo)
+from background_worker import (
+    submit_photo_processing_job, get_job_status, wait_for_job,
+    submit_async_email, submit_bulk_import_job, JobStatus
+)
+from security_middleware import init_security_middleware, brute_protector
 try:
     from gdrive_helper import upload_to_gdrive, archive_in_gdrive, upload_backup_to_gdrive, move_student_in_gdrive
 except ImportError:
@@ -84,22 +89,8 @@ YEAR_RANGE           = list(range(CURRENT_YEAR, CURRENT_YEAR - 10, -1))
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-@app.after_request
-def add_security_headers(response):
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"  # Clickjacking mitigation (V-008)
-    response.headers["X-Content-Type-Options"] = "nosniff"  # MIME sniffing prevention (V-024)
-    # Content Security Policy (V-022)
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: https://res.cloudinary.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "frame-ancestors 'none';"
-    )
-    # Strict Transport Security (HSTS) (V-023)
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
+# Initialize Enterprise-Grade Security Defense Middleware
+init_security_middleware(app)
 
 @app.route("/api/csrf-token", methods=["GET"])
 def get_csrf_token_endpoint():
@@ -214,21 +205,23 @@ def hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 
 def check_pw(pw: str, hashed: str, plain: str = None) -> bool:
-    """Verify password: checks plain-text match first, falls back to bcrypt hash."""
-    if plain is not None and plain != "":
-        if pw == plain:
-            return True
-    if hashed:
-        try:
-            return bcrypt.checkpw(pw.encode(), hashed.encode())
-        except Exception:
-            return False
-    return False
+    """Verify password securely using bcrypt hashing exclusively."""
+    if not pw or not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(pw.encode(), hashed.encode())
+    except Exception:
+        return False
 
-def send_email(to: str, subject: str, html: str):
+def send_email(to: str, subject: str, html: str, async_send: bool = True):
     if not app.config.get("MAIL_USERNAME") or not app.config.get("MAIL_PASSWORD"):
         app.logger.warning("📧 MAIL not configured – skipping email to %s | Subject: %s", to, subject)
-        app.logger.warning("📧 To fix: set MAIL_USERNAME + MAIL_PASSWORD in .env (use Gmail App Password)")
+        return
+    if app.config.get("TESTING"):
+        app.logger.info("📧 [TESTING] Simulated email to %s: %s", to, subject)
+        return
+    if async_send:
+        submit_async_email(app, to, subject, html)
         return
     try:
         msg = Message(subject, recipients=[to], html=html)
@@ -327,29 +320,49 @@ def _email_registered_html(name, student_id, login_email, password, card_link):
 # AUTH ROUTES
 # ══════════════════════════════════════════════════════════════════════════
 
-@app.route("/auth/login", methods=["GET","POST"])
-@limiter.limit(lambda: os.getenv("LIMIT_AUTH_LOGIN", "500 per hour"), methods=["POST"])
-def auth_login():
+@app.route("/login", methods=["GET","POST"])
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_LOGIN", "1000 per hour"), methods=["POST"])
+def login():
+    """Single unified login portal for all roles (Student, Staff, Admin, Superadmin)."""
     if session.get("user_id"):
+        if session.get("role") == "student":
+            sid = session.get("student_id") or ""
+            if sid:
+                db2 = get_db(); cur2 = db2.cursor()
+                cur2.execute(f"SELECT student_id FROM students WHERE student_id={ph()}", (sid,))
+                exists = cur2.fetchone(); db2.close()
+                if exists:
+                    return redirect(url_for("student_card", student_id=sid))
+            return redirect(url_for("student_self_register"))
         return redirect(url_for("dashboard"))
+
     error = None
     unverified_email = None
+    identifier_val = ""
+    client_ip = request.remote_addr or "127.0.0.1"
+
     if request.method == "POST":
-        email = request.form.get("email","").strip().lower()
-        pw    = request.form.get("password","")
-        db    = get_db(); cur = db.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (email, email))
+        identifier = (request.form.get("identifier") or request.form.get("email") or "").strip().lower()
+        identifier_val = identifier
+        pw = request.form.get("password", "")
+
+        db = get_db(); cur = db.cursor()
+        cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (identifier, identifier))
         u = _row_to_dict(cur.fetchone()); db.close()
+
         if not u:
-            error = "البريد الإلكتروني غير مسجل"
+            brute_protector.record_failure(client_ip)
+            error = "البريد الإلكتروني أو الرقم الجامعي غير مسجل"
         elif not u.get("is_active"):
             error = "الحساب موقوف. تواصل مع مدير النظام"
         elif not u.get("email_verified"):
             error = "يرجى تفعيل بريدك الإلكتروني أولاً"
-            unverified_email = email
-        elif not check_pw(pw, u["password_hash"], u.get("password_plain")):
+            unverified_email = u.get("email") or identifier
+        elif not check_pw(pw, u.get("password_hash")):
+            brute_protector.record_failure(client_ip)
             error = "كلمة المرور غير صحيحة"
         else:
+            brute_protector.record_success(client_ip)
             csrf_token_val = session.get("csrf_token")
             session.clear()
             if csrf_token_val:
@@ -361,6 +374,7 @@ def auth_login():
             session["college"]    = u.get("college") or ""
             session["student_id"] = u.get("student_id") or ""
             log_action(u["id"], "LOGIN", ip=request.remote_addr)
+
             # Students → check if registered, go to card or self-register
             if u["role"] == "student":
                 sid = u.get("student_id") or ""
@@ -373,61 +387,24 @@ def auth_login():
                 # Not registered yet → self-registration page
                 return redirect(url_for("student_self_register"))
             return redirect(url_for("dashboard"))
-    return render_template("auth_login.html", error=error,
+
+    status_code = 401 if (error and request.method == "POST") else 200
+    return render_template("login.html", error=error,
                            unverified_email=unverified_email,
-                           domain=UNIVERSITY_DOMAIN)
+                           identifier_val=identifier_val,
+                           domain=UNIVERSITY_DOMAIN), status_code
+
+
+@app.route("/auth/login", methods=["GET","POST"])
+def auth_login():
+    """Backward compatibility alias for unified login."""
+    return login()
 
 
 @app.route("/student/login", methods=["GET","POST"])
-@limiter.limit(lambda: os.getenv("LIMIT_STUDENT_LOGIN", "3000 per hour"), methods=["POST"])
 def student_login():
-    """Dedicated login page for students."""
-    if session.get("user_id"):
-        return redirect(url_for("dashboard"))
-    error = None
-    unverified_email = None
-    if request.method == "POST":
-        email = request.form.get("email","").strip().lower()
-        pw    = request.form.get("password","")
-        db    = get_db(); cur = db.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (email, email))
-        u = _row_to_dict(cur.fetchone()); db.close()
-        if not u:
-            error = "البريد الإلكتروني غير مسجل"
-        elif u.get("role") != "student":
-            error = "هذه الصفحة مخصصة للطلاب فقط"
-        elif not u.get("is_active"):
-            error = "الحساب موقوف. تواصل مع مدير النظام"
-        elif not u.get("email_verified"):
-            error = "يرجى تفعيل بريدك الإلكتروني أولاً"
-            unverified_email = email
-        elif not check_pw(pw, u["password_hash"], u.get("password_plain")):
-            error = "كلمة المرور غير صحيحة"
-        else:
-            csrf_token_val = session.get("csrf_token")
-            session.clear()
-            if csrf_token_val:
-                session["csrf_token"] = csrf_token_val
-            session["user_id"]    = u["id"]
-            session["user_name"]  = u["full_name"]
-            session["role"]       = u["role"]
-            session["email"]      = u["email"]
-            session["college"]    = u.get("college") or ""
-            session["student_id"] = u.get("student_id") or ""
-            log_action(u["id"], "LOGIN", ip=request.remote_addr)
-            # Students → check if registered, go to card or self-register
-            sid = u.get("student_id") or ""
-            if sid:
-                db2  = get_db(); cur2 = db2.cursor()
-                cur2.execute(f"SELECT student_id FROM students WHERE student_id={ph()}", (sid,))
-                exists = cur2.fetchone(); db2.close()
-                if exists:
-                    return redirect(url_for("student_card", student_id=sid))
-            # Not registered yet → self-registration page
-            return redirect(url_for("student_self_register"))
-    return render_template("student_login.html", error=error,
-                           unverified_email=unverified_email,
-                           domain=UNIVERSITY_DOMAIN)
+    """Backward compatibility alias for unified login."""
+    return login()
 
 
 @app.route("/auth/register", methods=["GET","POST"])
@@ -468,8 +445,8 @@ def auth_register():
                 hashed = hash_pw(pw)
                 # Always student role — admin creates staff/admin accounts separately
                 cur.execute(
-                    f"INSERT INTO users (email,password_hash,password_plain,full_name,role,student_id,verify_token) VALUES ({','.join([ph()]*7)})",
-                    (email, hashed, pw, full_name, "student", sid, token)
+                    f"INSERT INTO users (email,password_hash,full_name,role,student_id,verify_token) VALUES ({','.join([ph()]*6)})",
+                    (email, hashed, full_name, "student", sid, token)
                 )
                 db.commit(); db.close()
                 link = url_for("auth_verify", token=token, _external=True)
@@ -559,15 +536,16 @@ def auth_resend_verification():
 
 
 @app.route("/auth/forgot", methods=["GET","POST"])
-@limiter.limit(lambda: os.getenv("LIMIT_AUTH_FORGOT", "10 per hour"))
+@limiter.limit(lambda: os.getenv("LIMIT_AUTH_FORGOT", "15 per hour"))
 def auth_forgot():
     msg = None
     if request.method == "POST":
-        email = request.form.get("email","").strip().lower()
+        ident = request.form.get("email","").strip().lower()
         db    = get_db(); cur = db.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email={ph()}", (email,))
+        cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (ident, ident))
         u = _row_to_dict(cur.fetchone())
         if u:
+            target_email = u.get("email")
             token   = secrets.token_urlsafe(32)
             expires = (datetime.utcnow() + timedelta(hours=1)).isoformat()
             cur.execute(
@@ -576,9 +554,9 @@ def auth_forgot():
             )
             db.commit()
             link = url_for("auth_reset", token=token, _external=True)
-            send_email(email, "إعادة تعيين كلمة المرور", _email_reset_html(u["full_name"], link))
+            send_email(target_email, "إعادة تعيين كلمة المرور", _email_reset_html(u["full_name"], link))
         db.close()
-        msg = "إذا كان البريد مسجلاً ستصلك رسالة خلال دقائق"
+        msg = "إذا كان الحساب مسجلاً لدينا، ستصلك رسالة رابط إعادة التعيين عبر البريد الإلكتروني خلال دقائق."
     return render_template("auth_forgot.html", msg=msg)
 
 
@@ -601,8 +579,8 @@ def auth_reset(token):
         else:
             hashed = hash_pw(pw)
             cur.execute(
-                f"UPDATE users SET password_hash={ph()}, password_plain={ph()}, reset_token=NULL, reset_expires=NULL WHERE id={ph()}",
-                (hashed, pw, u["id"])
+                f"UPDATE users SET password_hash={ph()}, reset_token=NULL, reset_expires=NULL WHERE id={ph()}",
+                (hashed, u["id"])
             )
             db.commit(); db.close()
             log_action(u["id"], "PASSWORD_RESET", ip=request.remote_addr)
@@ -614,11 +592,14 @@ def auth_reset(token):
 
 
 @app.route("/auth/logout")
+@app.route("/logout")
+@app.route("/student/logout")
 def auth_logout():
     uid = session.get("user_id")
     if uid: log_action(uid, "LOGOUT", ip=request.remote_addr)
     session.clear()
-    return redirect(url_for("auth_login"))
+    return redirect(url_for("login"))
+
 
 
 @app.route("/auth/change-password", methods=["POST"])
@@ -653,12 +634,12 @@ def auth_change_password():
         db.close()
         return jsonify(success=False, message="المستخدم غير موجود"), 404
 
-    if not check_pw(cur_pw, u.get("password_hash"), u.get("password_plain")):
+    if not check_pw(cur_pw, u.get("password_hash")):
         db.close()
         return jsonify(success=False, message="كلمة المرور الحالية غير صحيحة"), 400
 
     new_hashed = hash_pw(new_pw)
-    cur.execute(f"UPDATE users SET password_hash={ph()}, password_plain={ph()} WHERE id={ph()}", (new_hashed, new_pw, uid))
+    cur.execute(f"UPDATE users SET password_hash={ph()} WHERE id={ph()}", (new_hashed, uid))
     db.commit()
     db.close()
 
@@ -902,17 +883,30 @@ def register():
         if len(raw_bytes) > app.config["MAX_CONTENT_LENGTH"]:
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
 
-        # High-performance single-pass image processing and face validation
-        ok, face_msg, processed = process_and_validate_photo(
-            raw_bytes, rotation=rotation, flip_h=flip_h,
-            zoom=zoom, offset_x=offset_x, offset_y=offset_y,
-            auto_crop=auto_crop
+        # Offload image processing & face validation to dedicated worker pool
+        job_id = submit_photo_processing_job(
+            raw_bytes=raw_bytes,
+            student_id=student_id,
+            year=year,
+            college=college,
+            upload_folder=UPLOAD_FOLDER,
+            static_root=STATIC_ROOT,
+            rotation=rotation,
+            flip_h=flip_h,
+            zoom=zoom,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            auto_crop=auto_crop,
+            db_update=False
         )
-        if not ok:
+        job = wait_for_job(job_id, timeout=4.5)
+        if not job or job.get("status") == JobStatus.FAILED:
+            face_msg = (job.get("error") if job else None) or "فشلت معالجة الصورة"
             return jsonify(success=False, message=face_msg), 400
 
-        # Save directly to local VPS storage
-        result = save_image(processed, student_id, year, college, UPLOAD_FOLDER, skip_validation=True)
+        result = job.get("result", {})
+        if not result or not result.get("path"):
+            return jsonify(success=False, message="تعذر حفظ الصورة المعالجة"), 500
 
         # DB insert
         db  = get_db(); cur = db.cursor()
@@ -933,16 +927,16 @@ def register():
             existing_user = cur.fetchone()
             if not existing_user:
                 cur.execute(
-                    f"INSERT INTO users (email,password_hash,password_plain,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*9)})",
-                    (student_login_email, hashed_pw, student_id, full_name, "student",
+                    f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
+                    (student_login_email, hashed_pw, full_name, "student",
                      college, student_id, True if is_use_pg() else 1, True if is_use_pg() else 1)
                 )
                 db.commit()
             else:
                 user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
                 cur.execute(
-                    f"UPDATE users SET password_hash={ph()}, password_plain={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
-                    (hashed_pw, student_id, student_id, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                    f"UPDATE users SET student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                    (student_id, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
                 )
                 db.commit()
 
@@ -1053,54 +1047,83 @@ def update_photo(student_id):
     offset_x = float(request.form.get("offset_x","0.0"))
     offset_y = float(request.form.get("offset_y","0.0"))
     auto_crop = request.form.get("auto_crop","1") == "1"
+    is_async = (
+        request.headers.get("X-Async") in ("1", "true") or
+        request.form.get("async") in ("1", "true")
+    )
 
-    raw      = image_file.read()
+    raw = image_file.read()
     if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
         db.close(); return jsonify(success=False, message="الصورة أكبر من 5 MB"), 400
 
+    year = row["year"]
+    college = row["college"]
+    old_rel = row.get("image_path", "")
+    # Close DB connection immediately so it's not held during image processing
+    db.close()
+
     try:
-        ok, face_msg, processed = process_and_validate_photo(
-            raw, rotation=rotation, flip_h=flip_h,
-            zoom=zoom, offset_x=offset_x, offset_y=offset_y,
-            auto_crop=auto_crop
+        # Enqueue in dedicated background image pool
+        job_id = submit_photo_processing_job(
+            raw_bytes=raw,
+            student_id=student_id,
+            year=year,
+            college=college,
+            upload_folder=UPLOAD_FOLDER,
+            static_root=STATIC_ROOT,
+            rotation=rotation,
+            flip_h=flip_h,
+            zoom=zoom,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            auto_crop=auto_crop,
+            archive_old_rel=old_rel,
+            db_update=True,
+            user_id=uid
         )
-        if not ok:
-            db.close()
-            return jsonify(success=False, message=face_msg), 400
 
-        # Archive old
-        old_rel = row.get("image_path","")
-        archived_path = archive_old_image(old_rel, student_id, STATIC_ROOT, UPLOAD_FOLDER)
-        if archived_path:
-            app.logger.info(f"Archived old image to: {archived_path}")
+        if is_async:
+            return jsonify(
+                success=True,
+                async_job=True,
+                job_id=job_id,
+                status=JobStatus.PROCESSING,
+                message="جارٍ معالجة الصورة والتحقق من الوجه في الخلفية..."
+            ), 202
 
-        # Save new directly to local VPS storage
-        result = save_image(processed, student_id, row["year"], row["college"], UPLOAD_FOLDER, skip_validation=True)
+        # Non-blocking wait for instant feedback (e.g. within 3.5s)
+        job = wait_for_job(job_id, timeout=3.5)
+        if job and job.get("status") == JobStatus.COMPLETED:
+            res_data = job.get("result", {})
+            log_action(uid, "UPDATE_PHOTO", target=student_id,
+                       detail="photo updated via student card", ip=request.remote_addr)
+            return jsonify(
+                success=True,
+                message="تم تحديث الصورة بنجاح ✓",
+                url=res_data.get("url"),
+                new_url=res_data.get("new_url", res_data.get("url")),
+                path=res_data.get("path"),
+                job_id=job_id
+            )
+        elif job and job.get("status") == JobStatus.FAILED:
+            return jsonify(success=False, message=job.get("error", "فشلت معالجة الصورة")), 400
+        else:
+            # If still processing under heavy load, return 202 Accepted with job_id so frontend polls cleanly
+            return jsonify(
+                success=True,
+                async_job=True,
+                job_id=job_id,
+                status=JobStatus.PROCESSING,
+                message="جارٍ استكمال معالجة الصورة في الخلفية..."
+            ), 202
 
-        cur.execute(
-            f"UPDATE students SET image_path={ph()}, updated_at={ph()} WHERE student_id={ph()}",
-            (result["path"], datetime.utcnow().isoformat(), student_id)
-        )
-        db.commit()
-        uid = session.get("user_id")
-        log_action(uid, "UPDATE_PHOTO", target=student_id,
-                   detail="photo updated via student card", ip=request.remote_addr)
-
-        db.close()
-        return jsonify(
-            success=True,
-            message="تم تحديث الصورة بنجاح ✓",
-            url=result["url"],
-            new_url=result["url"],
-            path=result["path"]
-        )
     except Exception as e:
-        db.close()
-        app.logger.error(f"Error updating photo for {student_id}: {e}")
-        return jsonify(success=False, message="حدث خطأ أثناء معالجة الصورة. تأكد من أن الملف المرفوع صورة صالحة وغير تالفة."), 500
+        app.logger.error(f"Error dispatching photo job for {student_id}: {e}")
+        return jsonify(success=False, message="حدث خطأ أثناء معالجة الصورة. تأكد من أن الملف المرفوع صورة صالحة."), 500
 
 
 @app.route("/api/crop-preview", methods=["POST"])
+@csrf.exempt
 def api_crop_preview():
     """
     Instant preview endpoint: returns professionally cropped 400x500 face photo
@@ -1124,6 +1147,78 @@ def api_crop_preview():
 
     b64 = base64.b64encode(processed).decode("utf-8")
     return jsonify(success=True, preview=f"data:image/jpeg;base64,{b64}")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# BACKGROUND JOB STATUS & MANAGEMENT API
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/jobs/<job_id>", methods=["GET"])
+def api_get_job(job_id):
+    """
+    Query real-time status, progress, and result of an async background job.
+    Supports polling from student card, registration, and bulk import pages.
+    """
+    info = get_job_status(job_id)
+    if not info:
+        return jsonify(success=False, message="المهمة غير موجودة"), 404
+    return jsonify(
+        success=True,
+        job_id=job_id,
+        status=info.get("status"),
+        progress=info.get("progress", 0),
+        result=info.get("result"),
+        error=info.get("error")
+    )
+
+
+@app.route("/api/jobs/photo/submit", methods=["POST"])
+@login_required
+def api_submit_photo_job():
+    """
+    Direct asynchronous API to upload a photo and get an immediate job_id.
+    """
+    image_file = request.files.get("image")
+    student_id = request.form.get("student_id", "").strip()
+    if not image_file or not student_id:
+        return jsonify(success=False, message="يرجى إرسال الصورة والرقم الجامعي"), 400
+
+    raw = image_file.read()
+    if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
+        return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
+
+    db = get_db()
+    cur = db.cursor()
+    cur.execute(f"SELECT year, college, image_path FROM students WHERE student_id={ph()}", (student_id,))
+    row = cur.fetchone()
+    db.close()
+    if not row:
+        return jsonify(success=False, message="الطالب غير موجود"), 404
+
+    year = row["year"] if isinstance(row, dict) else row[0]
+    college = row["college"] if isinstance(row, dict) else row[1]
+    old_rel = (row["image_path"] if isinstance(row, dict) else row[2]) or ""
+
+    job_id = submit_photo_processing_job(
+        raw_bytes=raw,
+        student_id=student_id,
+        year=year,
+        college=college,
+        upload_folder=UPLOAD_FOLDER,
+        static_root=STATIC_ROOT,
+        auto_crop=request.form.get("auto_crop", "1") == "1",
+        archive_old_rel=old_rel,
+        db_update=True,
+        user_id=session.get("user_id")
+    )
+
+    return jsonify(
+        success=True,
+        async_job=True,
+        job_id=job_id,
+        status=JobStatus.PROCESSING,
+        message="تم استلام الصورة وبدء المعالجة في الخلفية"
+    ), 202
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1337,24 +1432,24 @@ def admin_edit_student(sid):
                            else f"{new_student_id}@{UNIVERSITY_DOMAIN}")
 
     cur.execute(
-        f"SELECT id, email, password_plain FROM users WHERE role='student' AND (student_id={ph()} OR email={ph()} OR student_id={ph()})",
+        f"SELECT id, email, password_hash FROM users WHERE role='student' AND (student_id={ph()} OR email={ph()} OR student_id={ph()})",
         (old_student_id, old_email or "", new_student_id)
     )
     user_matches = cur.fetchall()
     if user_matches:
         for u_match in user_matches:
             user_id_val = u_match["id"] if isinstance(u_match, dict) else u_match[0]
-            curr_plain = u_match["password_plain"] if isinstance(u_match, dict) else (u_match[2] if len(u_match) > 2 else None)
+            old_hashed = u_match["password_hash"] if isinstance(u_match, dict) else (u_match[2] if len(u_match) > 2 else None)
 
-            if curr_plain == old_student_id or not curr_plain:
+            if old_hashed and check_pw(old_student_id, old_hashed):
                 # Password was still default student_id, keep it synced to new ID
                 new_hashed_pw = hash_pw(new_student_id)
                 cur.execute(
                     f"""UPDATE users 
                         SET student_id={ph()}, full_name={ph()}, college={ph()}, 
-                            email={ph()}, password_plain={ph()}, password_hash={ph()} 
+                            email={ph()}, password_hash={ph()} 
                         WHERE id={ph()}""",
-                    (new_student_id, full_name, college, student_login_email, new_student_id, new_hashed_pw, user_id_val)
+                    (new_student_id, full_name, college, student_login_email, new_hashed_pw, user_id_val)
                 )
             else:
                 # Custom password preserved, update user identity and college
@@ -1368,8 +1463,8 @@ def admin_edit_student(sid):
         # Create student user account if it did not exist
         new_hashed_pw = hash_pw(new_student_id)
         cur.execute(
-            f"INSERT INTO users (email,password_hash,password_plain,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*9)})",
-            (student_login_email, new_hashed_pw, new_student_id, full_name, "student",
+            f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
+            (student_login_email, new_hashed_pw, full_name, "student",
              college, new_student_id, True if is_use_pg() else 1, True if is_use_pg() else 1)
         )
 
@@ -1381,6 +1476,85 @@ def admin_edit_student(sid):
                ip=request.remote_addr)
 
     return jsonify(success=True, message="تم حفظ وتحديث بيانات الطالب بنجاح ✓")
+
+
+@app.route("/admin/student/<int:sid>/reset-password", methods=["POST"])
+@role_required("superadmin", "admin", "staff")
+def admin_reset_student_password(sid):
+    """Allow superadmin, staff, and college supervisors to reset a student's password."""
+    db = get_db(); cur = db.cursor()
+    cur.execute(f"SELECT * FROM students WHERE id={ph()}", (sid,))
+    s = _row_to_dict(cur.fetchone())
+    if not s:
+        db.close()
+        return jsonify(success=False, message="الطالب غير موجود"), 404
+
+    current_role = session.get("role")
+    user_college = session.get("college")
+    if current_role == "admin" and s.get("college") != user_college:
+        db.close()
+        return jsonify(success=False, message="ليس لديك صلاحية لإعادة تعيين كلمة مرور طالب من كلية أخرى"), 403
+
+    student_id = s.get("student_id")
+    student_name = s.get("full_name")
+    student_email = s.get("email") or f"{student_id}@{UNIVERSITY_DOMAIN}"
+
+    data = request.get_json() if request.is_json else request.form
+    new_pw = (data.get("new_password") or "").strip()
+    if not new_pw:
+        # Default fallback: generate 8-char secure alphanumeric password
+        new_pw = secrets.token_urlsafe(6).replace("-", "A").replace("_", "9")[:8]
+    elif len(new_pw) < 6:
+        db.close()
+        return jsonify(success=False, message="كلمة المرور يجب أن تكون 6 أحرف على الأقل"), 400
+
+    new_hashed = hash_pw(new_pw)
+
+    # Check user account in users table
+    cur.execute(f"SELECT id FROM users WHERE student_id={ph()} OR email={ph()}", (student_id, student_email))
+    u = cur.fetchone()
+    if u:
+        uid_val = u["id"] if isinstance(u, dict) else u[0]
+        cur.execute(f"UPDATE users SET password_hash={ph()}, reset_token=NULL, reset_expires=NULL WHERE id={ph()}", (new_hashed, uid_val))
+    else:
+        cur.execute(
+            f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
+            (student_email, new_hashed, student_name, "student", s.get("college"), student_id, True if is_use_pg() else 1, True if is_use_pg() else 1)
+        )
+    db.commit()
+    db.close()
+
+    log_action(session.get("user_id"), "RESET_STUDENT_PASSWORD", target=student_id,
+               detail=f"Reset password for {student_name} by {session.get('user_name')}", ip=request.remote_addr)
+
+    # Optional notification email
+    if s.get("email"):
+        try:
+            send_email(
+                s.get("email"),
+                "إشعار إعادة تعيين كلمة المرور",
+                f"""
+                <div dir="rtl" style="font-family:Cairo,Arial;max-width:520px;margin:auto">
+                  <div style="background:#0d1f3c;padding:24px;border-radius:14px 14px 0 0;text-align:center">
+                    <h2 style="color:#e8b84b;margin:0">إعادة تعيين كلمة المرور</h2>
+                  </div>
+                  <div style="background:#f0f4f9;padding:24px;border-radius:0 0 14px 14px">
+                    <p>أهلاً <strong>{student_name}</strong>،</p>
+                    <p>تمت إعادة تعيين كلمة المرور الخاصة بحسابك الجامعي من قبل إدارة الكلية.</p>
+                    <p>كلمة المرور المؤقتة الجديدة: <strong>{new_pw}</strong></p>
+                    <p style="color:#6b7a99;font-size:.85rem">يرجى تسجيل الدخول وتغيير كلمة المرور من داخل حسابك لضمان أمان بياناتك.</p>
+                  </div>
+                </div>
+                """
+            )
+        except Exception:
+            pass
+
+    return jsonify(
+        success=True,
+        message=f"تمت إعادة تعيين كلمة مرور الطالب {student_name} بنجاح ✓",
+        new_password=new_pw
+    )
 
 
 @app.route("/admin/export")
@@ -1529,7 +1703,7 @@ def admin_export_photos():
 def admin_users():
     db  = get_db(); cur = db.cursor()
     cur.execute("""SELECT id,email,full_name,role,college,student_id,
-                          is_active,email_verified,created_at,password_plain
+                          is_active,email_verified,created_at
                    FROM users ORDER BY college NULLS LAST, role, full_name""")
     users = [_row_to_dict(r) for r in cur.fetchall()]
     db.close()
@@ -1568,8 +1742,8 @@ def admin_create_user():
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
-            f"INSERT INTO users (email,password_hash,password_plain,full_name,role,college,email_verified,is_active) VALUES ({','.join([ph()]*8)})",
-            (email, hashed, password, full_name, role, college, 1 if not is_use_pg() else True, 1 if not is_use_pg() else True)
+            f"INSERT INTO users (email,password_hash,full_name,role,college,email_verified,is_active) VALUES ({','.join([ph()]*7)})",
+            (email, hashed, full_name, role, college, 1 if not is_use_pg() else True, 1 if not is_use_pg() else True)
         )
         db.commit()
     except Exception as e:
@@ -1608,7 +1782,9 @@ def admin_reset_user_password(uid):
     """Allow superadmin to set/reset any user's password directly."""
     data = request.get_json() if request.is_json else request.form
     new_pw = (data.get("new_password") or "").strip()
-    if not new_pw or len(new_pw) < 8:
+    if not new_pw:
+        new_pw = secrets.token_urlsafe(8)
+    elif len(new_pw) < 8:
         return jsonify(success=False, message="كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل"), 400
 
     db = get_db(); cur = db.cursor()
@@ -1619,12 +1795,12 @@ def admin_reset_user_password(uid):
         return jsonify(success=False, message="المستخدم غير موجود"), 404
 
     new_hashed = hash_pw(new_pw)
-    cur.execute(f"UPDATE users SET password_hash={ph()}, password_plain={ph()} WHERE id={ph()}", (new_hashed, new_pw, uid))
+    cur.execute(f"UPDATE users SET password_hash={ph()}, reset_token=NULL, reset_expires=NULL WHERE id={ph()}", (new_hashed, uid))
     db.commit()
     db.close()
 
     log_action(session.get("user_id"), "ADMIN_RESET_PASSWORD", target=u["email"], detail=f"Reset password for {u['full_name']}", ip=request.remote_addr)
-    return jsonify(success=True, message=f"تم تعيين كلمة المرور الجديدة للمستخدم {u['full_name']} بنجاح ✓")
+    return jsonify(success=True, message=f"تم تعيين كلمة المرور الجديدة للمستخدم {u['full_name']} بنجاح ✓", new_password=new_pw)
 
 
 @app.route("/admin/users/<int:uid>/toggle", methods=["POST"])
@@ -1701,17 +1877,17 @@ def admin_delete_user(uid):
 
 
 def export_users_to_excel_bytes() -> bytes:
-    """Generate an Excel workbook with all users and plain-text passwords."""
+    """Generate an Excel workbook with all users (passwords are securely hidden and excluded)."""
     db = get_db(); cur = db.cursor()
     cur.execute("""SELECT id, email, full_name, role, college, student_id,
-                          password_plain, is_active, email_verified, created_at
+                          is_active, email_verified, created_at
                    FROM users ORDER BY id ASC""")
     users = [_row_to_dict(r) for r in cur.fetchall()]
     db.close()
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "المستخدمون وكلمات المرور"
+    ws.title = "المستخدمون"
     ws.views.sheetView[0].rightToLeft = True
 
     # Styles
@@ -1729,7 +1905,7 @@ def export_users_to_excel_bytes() -> bytes:
     )
 
     headers = [
-        "م", "الاسم الكامل", "البريد الإلكتروني", "كلمة المرور",
+        "م", "الاسم الكامل", "البريد الإلكتروني",
         "الرقم الجامعي", "الكلية", "نوع الحساب", "حالة الحساب",
         "تأكيد البريد", "تاريخ التسجيل"
     ]
@@ -1761,7 +1937,6 @@ def export_users_to_excel_bytes() -> bytes:
             u.get("id"),
             u.get("full_name") or "",
             u.get("email") or "",
-            u.get("password_plain") or "",
             u.get("student_id") or "",
             u.get("college") or "إدارة عامة",
             role_arabic,
@@ -2031,6 +2206,28 @@ def bulk_import():
     except Exception as e:
         return jsonify(success=False, message=f"خطأ في قراءة الملف: {e}"), 400
 
+    # Support async background job for large batches or explicit requests
+    is_async = (
+        request.headers.get("X-Async") in ("1", "true") or
+        request.form.get("async") in ("1", "true") or
+        len(rows) > 15
+    )
+    if is_async:
+        job_id = submit_bulk_import_job(
+            app,
+            rows=rows[:500],
+            user_id=session.get("user_id"),
+            user_role=session.get("role"),
+            user_college=session.get("college")
+        )
+        return jsonify(
+            success=True,
+            async_job=True,
+            job_id=job_id,
+            total=min(len(rows), 500),
+            message=f"تم بدء استيراد {min(len(rows), 500)} طالب في الخلفية بنجاح"
+        ), 202
+
     # Expected columns (flexible mapping)
     COL_MAP = {
         "student_id": ["student_id","رقم_الطالب","رقم الطالب","id","الرقم"],
@@ -2125,9 +2322,15 @@ def bulk_import():
         # Insert student record
         try:
             uid = session.get("user_id")
+            reg_uid = None
+            if uid:
+                cur.execute(f"SELECT id FROM users WHERE id={ph()}", (uid,))
+                if cur.fetchone():
+                    reg_uid = uid
+
             cur.execute(
                 f"INSERT INTO students (student_id,full_name,year,college,email,image_path,registered_by) VALUES ({','.join([ph()]*7)})",
-                (sid, full_name, year, college, email or None, rel_path, uid)
+                (sid, full_name, year, college, email or None, rel_path, reg_uid)
             )
             db.commit()
 
@@ -2141,16 +2344,16 @@ def bulk_import():
             existing_user = cur.fetchone()
             if not existing_user:
                 cur.execute(
-                    f"INSERT INTO users (email,password_hash,password_plain,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*9)})",
-                    (student_login_email, hashed_pw, temp_pw, full_name, "student",
+                    f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
+                    (student_login_email, hashed_pw, full_name, "student",
                      college, sid, True if is_use_pg() else 1, True if is_use_pg() else 1)   # pre-verified, active
                 )
                 db.commit()
             else:
                 user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
                 cur.execute(
-                    f"UPDATE users SET password_hash={ph()}, password_plain={ph()}, student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
-                    (hashed_pw, temp_pw, sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                    f"UPDATE users SET student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                    (sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
                 )
                 db.commit()
 
@@ -2160,22 +2363,21 @@ def bulk_import():
                 "name":     full_name,
                 "status":   "تم الإنشاء",
                 "email":    student_login_email,
-                "temp_pw":  temp_pw,
             })
-            log_action(uid, "BULK_IMPORT_STUDENT", target=sid,
+            log_action(reg_uid, "BULK_IMPORT_STUDENT", target=sid,
                        detail=full_name, ip=request.remote_addr)
+
+            # Send welcome email with login credentials
+            if email:
+                card_link   = url_for("student_card", student_id=sid, _external=True)
+                login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
+                _send_student_welcome(email, full_name, sid, login_email, temp_pw, card_link)
         except Exception as e:
             results["errors"].append(f"سطر {i} ({sid}): {e}")
             results["skipped"] += 1
             results["preview"].append({"sid": sid, "name": full_name, "status": "خطأ"})
         finally:
             db.close()
-
-        # Send welcome email with login credentials
-        if email:
-            card_link   = url_for("student_card", student_id=sid, _external=True)
-            login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
-            _send_student_welcome(email, full_name, sid, login_email, temp_pw, card_link)
 
     return jsonify(success=True, results=results)
 
@@ -2371,17 +2573,30 @@ def student_self_register_post():
         if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
 
-        # High-performance single-pass image processing and face validation
-        ok, face_msg, processed = process_and_validate_photo(
-            raw, rotation=rotation, flip_h=flip_h,
-            zoom=zoom, offset_x=offset_x, offset_y=offset_y,
-            auto_crop=auto_crop
+        # Offload image processing & face validation to dedicated worker pool
+        job_id = submit_photo_processing_job(
+            raw_bytes=raw,
+            student_id=student_id,
+            year=year,
+            college=college,
+            upload_folder=UPLOAD_FOLDER,
+            static_root=STATIC_ROOT,
+            rotation=rotation,
+            flip_h=flip_h,
+            zoom=zoom,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            auto_crop=auto_crop,
+            db_update=False
         )
-        if not ok:
+        job = wait_for_job(job_id, timeout=4.5)
+        if not job or job.get("status") == JobStatus.FAILED:
+            face_msg = (job.get("error") if job else None) or "فشلت معالجة الصورة"
             return jsonify(success=False, message=face_msg), 400
 
-        # Save directly to local VPS storage
-        result = save_image(processed, student_id, year, college, UPLOAD_FOLDER, skip_validation=True)
+        result = job.get("result", {})
+        if not result or not result.get("path"):
+            return jsonify(success=False, message="تعذر حفظ الصورة المعالجة"), 500
 
         db  = get_db(); cur = db.cursor()
         try:

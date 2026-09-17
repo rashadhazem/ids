@@ -507,7 +507,7 @@ document.getElementById('img-inp').addEventListener('change',function(){
     // Fetch instant professional ID face crop preview
     const fd = new FormData();
     fd.append('image', f);
-    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || document.querySelector('input[name="csrf_token"]')?.value || '';
     fetch('/api/crop-preview', {
       method: 'POST',
       headers: { 'X-CSRFToken': csrfToken },

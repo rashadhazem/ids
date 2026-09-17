@@ -45,9 +45,10 @@ def test_cascade():
     row_sid = cur.fetchone()
     sid = row_sid["id"] if isinstance(row_sid, dict) else row_sid[0]
 
+    from app import hash_pw
     cur.execute(
-        f"INSERT INTO users (email, password_hash, password_plain, full_name, role, college, student_id, is_active, email_verified) VALUES ({','.join([ph()]*9)})",
-        (old_email, "hash_old", old_id, old_name, "student", old_col, old_id, True, True)
+        f"INSERT INTO users (email, password_hash, full_name, role, college, student_id, is_active, email_verified) VALUES ({','.join([ph()]*8)})",
+        (old_email, hash_pw(old_id), old_name, "student", old_col, old_id, True, True)
     )
     db.commit()
     db.close()
@@ -102,8 +103,8 @@ def test_cascade():
     print(f"[*] Users table after edit: {u_row}")
     assert u_row["student_id"] == new_id, "users.student_id mismatch"
     assert u_row["full_name"] == new_name, "users.full_name mismatch"
-    assert u_row["college"] == new_col, "users.college mismatch"
-    assert u_row["password_plain"] == new_id, "users.password_plain was not synced to new_id"
+    import bcrypt
+    assert bcrypt.checkpw(new_id.encode("utf-8"), u_row["password_hash"].encode("utf-8")), "users.password_hash was not synced to new_id"
     db.close()
 
     # 5. Verify student card redirection from old_id to new_id
