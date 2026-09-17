@@ -88,12 +88,16 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def add_security_headers(response):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"  # Clickjacking mitigation (V-008)
     response.headers["X-Content-Type-Options"] = "nosniff"  # MIME sniffing prevention (V-024)
-    # Content Security Policy (V-022)
+    minio_public_url = os.getenv("MINIO_PUBLIC_URL", "").rstrip("/")
+    allowed_img_sources = "'self' data: https://res.cloudinary.com https://id-storage.devhubai.net"
+    if minio_public_url and minio_public_url not in allowed_img_sources:
+        allowed_img_sources += f" {minio_public_url}"
+
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: https://res.cloudinary.com; "
+        f"img-src {allowed_img_sources}; "
         "font-src 'self' https://fonts.gstatic.com; "
         "frame-ancestors 'none';"
     )
