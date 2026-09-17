@@ -20,7 +20,7 @@ services:
       - bua_network
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: bua_minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
