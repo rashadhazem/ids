@@ -1178,11 +1178,22 @@ def admin_delete(sid):
     db  = get_db(); cur = db.cursor()
     cur.execute(f"SELECT * FROM students WHERE id={ph()}", (sid,))
     row = _row_to_dict(cur.fetchone())
-    if not row: db.close(); return jsonify(success=False, message="غير موجود"), 404
-    img_path = os.path.join(STATIC_ROOT, row.get("image_path",""))
+    raw_img_path = row.get("image_path", "")
     cur.execute(f"DELETE FROM students WHERE id={ph()}", (sid,))
     db.commit(); db.close()
-    if os.path.exists(img_path): os.remove(img_path)
+
+    if raw_img_path.startswith("http://") or raw_img_path.startswith("https://"):
+        try:
+            from s3_helper import delete_image_from_s3
+            delete_image_from_s3(raw_img_path)
+        except Exception:
+            pass
+    else:
+        local_path = os.path.join(STATIC_ROOT, raw_img_path)
+        if os.path.exists(local_path):
+            try: os.remove(local_path)
+            except Exception: pass
+
     log_action(session.get("user_id"), "DELETE_STUDENT",
                target=row.get("student_id"), detail=row.get("full_name"),
                ip=request.remote_addr)
@@ -1477,20 +1488,32 @@ def admin_export_photos():
             if not rel:
                 continue
 
-            # Local VPS file path resolution
-            local_path = os.path.join(STATIC_ROOT, rel.replace("/", os.sep))
-            if not os.path.exists(local_path):
-                # Check directly inside UPLOAD_FOLDER
-                local_path = os.path.join(UPLOAD_FOLDER, rel.replace("uploads/", "").replace("uploads\\", "").replace("/", os.sep))
+            image_data = None
+            if rel.startswith("http://") or rel.startswith("https://"):
+                try:
+                    from s3_helper import get_image_bytes
+                    image_data = get_image_bytes(rel)
+                except Exception:
+                    pass
 
-            if os.path.exists(local_path) and os.path.isfile(local_path):
+            if not image_data:
+                local_path = os.path.join(STATIC_ROOT, rel.replace("/", os.sep))
+                if not os.path.exists(local_path):
+                    local_path = os.path.join(UPLOAD_FOLDER, rel.replace("uploads/", "").replace("uploads\\", "").replace("/", os.sep))
+                if os.path.exists(local_path) and os.path.isfile(local_path):
+                    try:
+                        with open(local_path, "rb") as f:
+                            image_data = f.read()
+                    except Exception:
+                        pass
+
+            if image_data:
                 c_name = re.sub(r'[\s/\\:*?"<>|]+', "_", s["college"].strip())
                 y_name = s.get("year", "عام")
                 s_id = s.get("student_id", "")
 
-                # Clean naming: College / Year / ID.jpg (Strictly ID only, no name)
                 archive_arcname = f"{c_name}/{y_name}/{s_id}.jpg"
-                zf.write(local_path, arcname=archive_arcname)
+                zf.writestr(archive_arcname, image_data)
                 manifest_lines.append(f'"{s_id}","{s.get("full_name","")}","{s["college"]}","{y_name}","{archive_arcname}"')
                 added_count += 1
 

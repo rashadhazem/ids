@@ -18,6 +18,23 @@ except ImportError:
     move_student_in_gdrive = lambda *a, **kw: False
     is_gdrive_configured = lambda: False
 
+try:
+    from s3_helper import (
+        upload_image_to_s3,
+        archive_image_in_s3,
+        move_student_in_s3,
+        is_s3_configured,
+        delete_image_from_s3,
+        get_image_bytes,
+    )
+except ImportError:
+    is_s3_configured = lambda: False
+    upload_image_to_s3 = lambda *a, **kw: None
+    archive_image_in_s3 = lambda *a, **kw: None
+    move_student_in_s3 = lambda *a, **kw: None
+    delete_image_from_s3 = lambda *a, **kw: False
+    get_image_bytes = lambda *a, **kw: None
+
 TARGET_W = 400
 TARGET_H = 500
 JPEG_Q = 88  # output quality
@@ -558,6 +575,13 @@ def save_image(
         if not is_valid:
             raise ValueError(msg)
 
+    s3_result = None
+    if is_s3_configured():
+        try:
+            s3_result = upload_image_to_s3(image_bytes, student_id, year, college)
+        except Exception as e:
+            print(f"[MinIO S3] Upload failed, falling back to local storage: {e}")
+
     year_folder = os.path.join(upload_root, year)
     os.makedirs(year_folder, exist_ok=True)
 
@@ -571,7 +595,7 @@ def save_image(
     with open(full_path, "wb") as f:
         f.write(image_bytes)
 
-    # Optional background sync to Google Drive (never blocks student upload on VPS)
+    # Optional background sync to Google Drive
     if os.getenv("ENABLE_GDRIVE_SYNC", "false").lower() == "true":
         try:
             if is_gdrive_configured():
@@ -583,6 +607,9 @@ def save_image(
                 ).start()
         except Exception as e:
             print(f"[GDrive Async] Upload dispatch error: {e}")
+
+    if s3_result and s3_result.get("url"):
+        return {"path": s3_result["url"], "url": s3_result["url"]}
 
     rel_path = os.path.relpath(full_path, os.path.join(upload_root, "..")).replace(
         "\\", "/"
@@ -603,13 +630,20 @@ def archive_old_image(
     old_rel_path: str, student_id: str, static_root: str, upload_root: str
 ) -> str | None:
     """
-    Move old image to old/ subdirectory.
+    Move old image to old/ subdirectory or S3 archive path.
     Also archives the old photo on Google Drive.
-    Only keeps one old photo ({student_id}_old.jpg) in the old folder.
-    Returns new relative path or None if file not found.
+    Returns new relative path or S3 URL, or None if file not found.
     """
     if not old_rel_path:
         return None
+
+    if is_s3_configured() and old_rel_path:
+        try:
+            s3_archived = archive_image_in_s3(old_rel_path, student_id)
+            if s3_archived and (old_rel_path.startswith("http://") or old_rel_path.startswith("https://")):
+                return s3_archived
+        except Exception as e:
+            print(f"[MinIO S3] Failed to archive S3 image: {e}")
 
     old_full_path = os.path.join(static_root, old_rel_path)
     if not os.path.exists(old_full_path):
@@ -682,6 +716,15 @@ def move_student_images_locally(
             )
     except Exception as e:
         print(f"[GDrive] Failed to move student in Google Drive: {e}")
+
+    # 2. Trigger MinIO S3 move if configured
+    if is_s3_configured() and old_rel_path:
+        try:
+            s3_moved = move_student_in_s3(old_rel_path, new_student_id, new_year, new_college)
+            if s3_moved and (old_rel_path.startswith("http://") or old_rel_path.startswith("https://")):
+                return s3_moved
+        except Exception as e:
+            print(f"[MinIO S3] Failed to move student in S3: {e}")
 
     # 2. Target paths locally
     new_col_folder = _college_folder(new_college)

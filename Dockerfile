@@ -25,4 +25,4 @@ RUN mkdir -p /app/instance /app/static/uploads
 
 EXPOSE 5000
 
-CMD ["gunicorn", "-k", "gevent", "--worker-connections", "1000", "--workers", "4", "--bind", "0.0.0.0:5000", "--timeout", "120", "wsgi:app"]
+CMD ["gunicorn", "-c", "gunicorn_config.py", "wsgi:app"]

@@ -19,6 +19,21 @@ services:
     networks:
       - bua_network
 
+  minio:
+    image: minio/minio:latest
+    container_name: bua_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-bua_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-BuaMinioSecure@2026!}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_URL:-https://id-storage.devhubai.net}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_PUBLIC_URL:-https://id-storage.devhubai.net}/minio/ui/
+    volumes:
+      - minio_data:/data
+    networks:
+      - bua_network
+
   web:
     build:
       context: .
@@ -28,23 +43,52 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "5000:5000"
+      minio:
+        condition: service_started
     env_file:
       - .env
     environment:
-      # Connects to the db container via internal docker network
       DATABASE_URL: postgresql://${POSTGRES_USER:-bua_user}:${POSTGRES_PASSWORD:-bua_password}@db:5432/${POSTGRES_DB:-bua_db}
       FLASK_ENV: production
       PYTHONUNBUFFERED: "1"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-bua_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-BuaMinioSecure@2026!}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-student-photos}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://id-storage.devhubai.net}
+      SESSION_COOKIE_SECURE: "true"
     volumes:
       - ./static/uploads:/app/static/uploads
+    networks:
+      - bua_network
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: bua_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - minio
     networks:
       - bua_network
 
 volumes:
   postgres_data:
     name: bua_postgres_data
+  minio_data:
+    name: bua_minio_data
+  caddy_data:
+    name: bua_caddy_data
+  caddy_config:
+    name: bua_caddy_config
 
 networks:
   bua_network:
