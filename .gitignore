@@ -2,9 +2,6 @@
 .env.local
 venv/
 
-SECURITY_AUDIT_REPORTS.md
-
-chat_summary.md
 
 __pycache__/
 *.pyc

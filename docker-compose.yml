@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-bua_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bua_password}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -38,15 +38,13 @@ services:
       FLASK_ENV: production
       PYTHONUNBUFFERED: "1"
     volumes:
-      - uploads_data:/app/static/uploads
+      - ./static/uploads:/app/static/uploads
     networks:
       - bua_network
 
 volumes:
   postgres_data:
     name: bua_postgres_data
-  uploads_data:
-    name: bua_uploads_data
 
 networks:
   bua_network:

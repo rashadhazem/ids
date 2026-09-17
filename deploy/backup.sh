@@ -43,7 +43,26 @@ echo "[OK] Backup created successfully: ${ARCHIVE_NAME}"
 echo "     Size: $(du -sh "$ARCHIVE_NAME" | cut -f1)"
 
 # 4. Upload Backup to Google Drive (if configured)
-if [ -f "/var/www/bua/venv/bin/python" ]; then
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^bua_app$"; then
+    echo "  • Syncing backup archive to Google Drive via bua_app container..."
+    docker cp "$ARCHIVE_NAME" bua_app:/tmp/bua_backup.tar.gz
+    docker exec -i bua_app python -c "
+import os, sys
+try:
+    from gdrive_helper import upload_backup_to_gdrive, is_gdrive_configured
+    if is_gdrive_configured():
+        ok = upload_backup_to_gdrive('/tmp/bua_backup.tar.gz', 'bua_backup.tar.gz')
+        if ok:
+            print('[OK] Backup uploaded to Google Drive successfully!')
+        else:
+            print('[WARNING] Google Drive upload did not complete.')
+    else:
+        print('[INFO] Google Drive sync skipped (not configured or sync disabled).')
+except Exception as e:
+    print(f'[WARNING] Google Drive backup sync error: {e}')
+" || true
+    docker exec bua_app rm -f /tmp/bua_backup.tar.gz || true
+elif [ -f "/var/www/bua/venv/bin/python" ]; then
     echo "  • Syncing backup archive to Google Drive..."
     /var/www/bua/venv/bin/python -c "
 import os, sys

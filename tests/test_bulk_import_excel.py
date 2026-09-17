@@ -27,8 +27,26 @@ class TestBulkImportExcel(unittest.TestCase):
         app.config["WTF_CSRF_ENABLED"] = False
 
         cls.excel_path = os.path.join(os.path.dirname(__file__), "test_students_import.xlsx")
-        # Extract student IDs from the test Excel to clean up before and after
         import openpyxl
+        if not os.path.exists(cls.excel_path):
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            headers = ["رقم الطالب", "الاسم الكامل", "السنة", "الكلية", "البريد الإلكتروني"]
+            ws.append(headers)
+            sample_data = [
+                ["2026101001", "على محمد على أحمد", "2026", "كلية الحاسبات والمعلومات", "ali.2026101001@bua.edu.eg"],
+                ["2026101002", "سارة محمود إبراهيم حسن", "2026", "كلية الطب البشري", "sara.2026101002@bua.edu.eg"],
+                ["2026101003", "عمر خالد يوسف النجار", "2026", "كلية الهندسة", "omar.2026101003@bua.edu.eg"],
+                ["2026101004", "نورهان طارق مصطفى محمود", "2026", "كلية طب الأسنان", "nourhan.2026101004@bua.edu.eg"],
+                ["2026101005", "أحمد حسن عبد الرحمن خليل", "2026", "كلية الصيدلة فارما D", "ahmed.2026101005@bua.edu.eg"],
+                ["2026101006", "مريم ياسر كمال الشريف", "2026", "كلية العلاج الطبيعي", "mariam.2026101006@bua.edu.eg"],
+                ["2026101007", "زياد سامح فؤاد إبراهيم", "2026", "كلية إدارة الأعمال", "ziad.2026101007@bua.edu.eg"],
+                ["2026101008", "آية هاني فتحي السيد", "2026", "كلية تكنولوجيا العلوم الصحية", "aya.2026101008@bua.edu.eg"],
+            ]
+            for row in sample_data:
+                ws.append(row)
+            wb.save(cls.excel_path)
+
         wb = openpyxl.load_workbook(cls.excel_path, data_only=True)
         ws = wb.active
         headers = [str(c.value or "").strip() for c in next(ws.iter_rows(min_row=1, max_row=1))]
@@ -40,6 +58,7 @@ class TestBulkImportExcel(unittest.TestCase):
                 cls.test_sids.append(sid)
 
         cls._cleanup_test_data()
+
 
     @classmethod
     def tearDownClass(cls):

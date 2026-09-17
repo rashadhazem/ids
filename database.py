@@ -275,6 +275,15 @@ class PooledPGConnectionWrapper:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
+    @property
+    def autocommit(self):
+        return getattr(self._conn, "autocommit", False)
+
+    @autocommit.setter
+    def autocommit(self, val):
+        if self._conn:
+            self._conn.autocommit = bool(val)
+
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
@@ -544,6 +553,23 @@ def init_db():
     cur  = conn.cursor()
 
     if is_use_pg():
+        try:
+            conn.autocommit = True
+        except Exception:
+            pass
+
+        # ── Base schema for PostgreSQL ──
+        for stmt in _PG_SCHEMA.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                try:
+                    cur.execute(stmt)
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+
         # ── Migration: add missing columns & student_id_history & background_jobs tables ──
         try:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT UNIQUE")
@@ -577,43 +603,43 @@ def init_db():
             """)
             conn.commit()
         except Exception as e:
-            pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
-        # Fast check: if users table already exists, skip redundant DDL statements
+        # ── Seed super admin (Zero plain-text password) ──
         try:
-            cur.execute("SELECT 1 FROM users LIMIT 1")
-            conn.close()
-            print("[INFO] PostgreSQL database connected and verified.")
-            return
+            email    = os.getenv("SUPER_ADMIN_EMAIL", "admin@university.edu.eg")
+            password = os.getenv("SUPER_ADMIN_PASSWORD")
+            if not password:
+                password = "Admin@2026!"
+                print("[WARNING] SUPER_ADMIN_PASSWORD is not set in environment. Falling back to default password.")
+            name     = "مدير النظام"
+
+            cur.execute("SELECT id FROM users WHERE email=%s", (email,))
+            if not cur.fetchone():
+                hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+                cur.execute(
+                    "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (email, hashed, name, "superadmin", True, True)
+                )
+        except Exception as e:
+            print(f"[WARNING] Seeding super admin error: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+
+        try:
+            conn.commit()
         except Exception:
             pass
-
-        # ── Create tables + indexes ──
-        for stmt in _PG_SCHEMA.split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                try:
-                    cur.execute(stmt)
-                except Exception:
-                    pass
-
-        # seed super admin
-        email    = os.getenv("SUPER_ADMIN_EMAIL", "admin@university.edu.eg")
-        password = os.getenv("SUPER_ADMIN_PASSWORD")
-        if not password:
-            password = "Admin@2026!"
-            print("[WARNING] SUPER_ADMIN_PASSWORD is not set in environment. Falling back to default password.")
-        name     = "مدير النظام"
-
-        cur.execute("SELECT id FROM users WHERE email=%s", (email,))
-        if not cur.fetchone():
-            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-            cur.execute(
-                "INSERT INTO users (email,password_hash,full_name,role,is_active,email_verified) VALUES (%s,%s,%s,%s,%s,%s)",
-                (email, hashed, name, "superadmin", True, True)
-            )
-
-        conn.commit()
+        try:
+            conn.autocommit = False
+        except Exception:
+            pass
         conn.close()
         print("DB initialised (PostgreSQL)")
     else:

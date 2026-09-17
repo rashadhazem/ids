@@ -92,6 +92,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # Initialize Enterprise-Grade Security Defense Middleware
 init_security_middleware(app)
 
+
 @app.route("/api/csrf-token", methods=["GET"])
 def get_csrf_token_endpoint():
     from flask_wtf.csrf import generate_csrf
