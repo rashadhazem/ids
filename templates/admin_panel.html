@@ -1580,15 +1580,9 @@ function userCard(u, rl) {
           </span>` : ''}
       </div>
 
-      <!-- Security Protection Badge -->
-      <div class="uc-password-box" style="background:#f8fafc;border:1px dashed #cbd5e1;justify-content:center">
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="color:#0f766e;font-size:.74rem;font-weight:700">🔒 كلمة المرور محمية ومشفرة (Bcrypt)</span>
-        </div>
-      </div>
-
       <!-- Action Toolbar -->
       <div class="uc-toolbar">
+
         <button type="button" onclick="openEditUser(${u.id}, '${escapeHTML(u.full_name)}', '${escapeHTML(u.email)}', '${u.role}', '${escapeHTML(u.college||'')}')"
           class="btn-uc-action edit" title="تعديل صلاحيات المشرف">
           <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
@@ -1693,12 +1687,12 @@ function renderUsersList() {
                   </div>
                   <span class="badge badge-blue" style="font-family:monospace;font-size:.75rem;direction:ltr">${sid}</span>
                 </div>
-                <div class="stu-card-bottom" style="justify-content:space-between">
-                  <span style="color:#0f766e;font-size:.72rem;font-weight:600">🔒 كلمة المرور مشفرة</span>
+                <div class="stu-card-bottom" style="justify-content:flex-end">
                   <button type="button" onclick="openResetUserPw(${s.id}, '${escapeHTML(s.full_name)}', '${escapeHTML(s.email)}')" class="btn btn-sm btn-outline" style="padding:3px 10px;font-size:.72rem;color:#1a3a6b;border-color:#cbd5e1" title="إعادة تعيين كلمة المرور">
                     🔑 إعادة تعيين
                   </button>
                 </div>
+
               </div>
             `;
           }).join('')}
