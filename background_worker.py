@@ -14,6 +14,7 @@ import time
 import uuid
 import logging
 import threading
+import secrets
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Any, Callable, Dict, Optional
@@ -507,7 +508,7 @@ def submit_bulk_import_job(flask_app, rows: list, user_id: int, user_role: str, 
                     db.commit()
 
                     student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
-                    temp_pw             = sid
+                    temp_pw             = secrets.token_urlsafe(8)
                     hashed_pw           = hash_pw(temp_pw)
 
                     cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, sid))

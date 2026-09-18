@@ -2,6 +2,7 @@ import os
 import io
 import re
 import shutil
+import logging
 from datetime import datetime
 import numpy as np
 import cv2
@@ -9,6 +10,7 @@ from PIL import Image, ImageOps
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 try:
     from gdrive_helper import upload_to_gdrive, archive_in_gdrive, move_student_in_gdrive, is_gdrive_configured
@@ -21,6 +23,21 @@ except ImportError:
 TARGET_W = 400
 TARGET_H = 500
 JPEG_Q = 88  # output quality
+
+# ── Image Security & Decompression Bomb Protection ───────────────────────────
+Image.MAX_IMAGE_PIXELS = 25_000_000
+
+def validate_image_magic_bytes(data: bytes) -> tuple[bool, str]:
+    """Validate that the byte stream starts with valid JPEG or PNG magic numbers."""
+    if not data or len(data) < 8:
+        return False, "الملف المرفوع فارغ أو تالف"
+    # JPEG magic: \xff\xd8\xff
+    if data.startswith(b"\xff\xd8\xff"):
+        return True, "image/jpeg"
+    # PNG magic: \x89PNG\r\n\x1a\n
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True, "image/png"
+    return False, "نوع الملف غير صالح. يُسمح فقط بملفات الصور الحقيقية (JPEG / PNG)"
 
 # OpenCV face detection cascades & Deep Learning YuNet
 _CASCADES = []
@@ -157,16 +174,20 @@ def _non_max_suppression(boxes: list[tuple[int, int, int, int]], overlap_thresh:
     return picked
 
 
-def detect_faces_detailed(image_bytes: bytes) -> list[dict]:
+def detect_faces_detailed(image_bytes: bytes = None, cv_img: np.ndarray = None) -> list[dict]:
     """
     Detect human faces with high accuracy.
     Uses YuNet DNN as primary detector (accurate across angles, lighting, distances).
     Falls back to multi-scale Haar Cascades with CLAHE.
     Returns list of dicts:
     [{'box': (x, y, w, h), 'eyes': (eye_cx, eye_cy), 'score': float}, ...]
+    Supports receiving pre-decoded cv_img to eliminate redundant decode passes.
     """
-    normalized_bytes = _normalize_image_bytes(image_bytes)
-    cv_img = _bytes_to_cv(normalized_bytes)
+    if cv_img is None:
+        if not image_bytes:
+            return []
+        normalized_bytes = _normalize_image_bytes(image_bytes)
+        cv_img = _bytes_to_cv(normalized_bytes)
     if cv_img is None:
         return []
 
@@ -218,7 +239,7 @@ def detect_faces_detailed(image_bytes: bytes) -> list[dict]:
                 if results:
                     return results
         except Exception as e:
-            print(f"Warning: YuNet detection failed, falling back to Haar: {e}")
+            logger.warning(f"YuNet detection failed, falling back to Haar: {e}")
 
     # 2. Fallback to OpenCV Haar cascades with CLAHE enhancement
     if not _CASCADES:
@@ -304,7 +325,12 @@ def face_detected(image_bytes: bytes) -> bool:
     return len(detect_faces(image_bytes)) > 0
 
 
-def smart_crop_face(image_bytes: bytes, faces: list = None) -> bytes:
+def smart_crop_face(
+    image_bytes: bytes = None,
+    faces: list = None,
+    pil_img: Image.Image = None,
+    return_pil: bool = False,
+) -> bytes | Image.Image:
     """
     Auto-crop image into a professional ID card / passport portrait:
     - Focuses strictly on the person's head, face, and collar (bust).
@@ -312,16 +338,27 @@ def smart_crop_face(image_bytes: bytes, faces: list = None) -> bytes:
     - Preserves entire head, hair, headwear, chin, and neck without clipping.
     - Guarantees exact 4:5 aspect ratio (400x500 pixels) with 100% frame fill,
       zero black letterbox bars, and zero distortion.
+    Supports in-memory pil_img and return_pil to avoid repeated decode/encode passes.
     """
-    normalized_bytes = _normalize_image_bytes(image_bytes)
-    pil = Image.open(io.BytesIO(normalized_bytes)).convert("RGB")
+    if pil_img is None:
+        if not image_bytes:
+            return b"" if not return_pil else None
+        normalized_bytes = _normalize_image_bytes(image_bytes)
+        pil = Image.open(io.BytesIO(normalized_bytes)).convert("RGB")
+    else:
+        pil = pil_img
+
     iw, ih = pil.size
 
     target_ar = TARGET_W / TARGET_H  # 400 / 500 = 0.8
 
     # If faces not provided, get detailed face detections
     if faces is None:
-        faces = detect_faces_detailed(normalized_bytes)
+        if pil_img is not None:
+            cv_img = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+            faces = detect_faces_detailed(cv_img=cv_img)
+        else:
+            faces = detect_faces_detailed(normalized_bytes)
     elif faces and isinstance(faces[0], (list, tuple)):
         # Convert legacy (x, y, w, h) tuples to detailed dicts
         faces = [
@@ -347,39 +384,29 @@ def smart_crop_face(image_bytes: bytes, faces: list = None) -> bytes:
         head_height = max(1, chin_bottom - head_top)
 
         # Professional ID / Passport standard:
-        # Head height occupies ~68% of frame height (strict headshot focus).
-        # This completely discards torso, arms, legs, and background clutter.
-        desired_crop_h = int(head_height / 0.68)
-        desired_crop_w = int(desired_crop_h * target_ar)
+        # Head height should occupy between 52% and 62% of final portrait height
+        desired_head_fraction = 0.56
+        ideal_crop_h = int(head_height / desired_head_fraction)
 
-        # If desired crop exceeds image boundaries (extreme close-up), fit max 4:5 box
-        if desired_crop_h > ih or desired_crop_w > iw:
-            if iw / float(ih) > target_ar:
-                crop_h = ih
-                crop_w = int(crop_h * target_ar)
-            else:
-                crop_w = iw
-                crop_h = int(crop_w / target_ar)
-        else:
-            crop_h = desired_crop_h
-            crop_w = desired_crop_w
+        # Ensure crop fits the image
+        crop_h = min(ih, ideal_crop_h)
+        crop_w = int(crop_h * target_ar)
 
-        # Ensure crop is at least big enough to contain the full head
-        min_crop_h = int(head_height * 1.25)
-        if crop_h < min_crop_h and min_crop_h <= ih and int(min_crop_h * target_ar) <= iw:
-            crop_h = min_crop_h
-            crop_w = int(crop_h * target_ar)
+        # If crop_w exceeds image width, shrink crop proportionally
+        if crop_w > iw:
+            crop_w = iw
+            crop_h = int(crop_w / target_ar)
 
-        # Horizontal alignment: centered precisely on eye midpoint / face midline
-        face_mid_x = int(eye_cx)
-        left = face_mid_x - crop_w // 2
+        # Horizontal centering: Center strictly on the eye midpoint / face center
+        left = int(eye_cx - crop_w / 2.0)
         left = max(0, min(left, iw - crop_w))
 
-        # Vertical alignment: eye line placed at standard 38% from top of crop
+        # Vertical placement:
+        # Standard composition: Eyes should sit at ~38% from top of crop frame
         target_top = int(eye_cy - crop_h * 0.38)
 
-        # Headroom safety: guarantee at least 8% headroom above top of hair
-        headroom_limit = head_top - int(crop_h * 0.08)
+        # Headroom safety: guarantee skull top is below top of crop frame by at least 6%
+        headroom_limit = head_top - int(crop_h * 0.06)
         if target_top > headroom_limit:
             target_top = headroom_limit
 
@@ -411,6 +438,8 @@ def smart_crop_face(image_bytes: bytes, faces: list = None) -> bytes:
     # Crop and high-quality resize to exact target dimensions
     cropped = pil.crop((left, top, left + crop_w, top + crop_h))
     resized = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
+    if return_pil:
+        return resized
     return _pil_to_bytes(resized)
 
 
@@ -450,11 +479,9 @@ def apply_edits(
         top = min(top, max(0, ih - new_h))
         pil = pil.crop((left, top, left + new_w, top + new_h))
 
-    edited_bytes = _pil_to_bytes(pil)
-
     # Always auto-crop to face unless user explicitly panned/zoomed manually
     if auto_crop or not has_manual_pan_zoom:
-        return smart_crop_face(edited_bytes, faces=faces)
+        return smart_crop_face(pil_img=pil, faces=faces)
 
     # Ensure 4:5 aspect ratio without distortion if manual crop
     target_ar = TARGET_W / TARGET_H
@@ -484,12 +511,13 @@ def process_and_validate_photo(
     auto_crop: bool = True,
 ) -> tuple[bool, str, bytes | None]:
     """
-    High-performance single-pass image processor and face validator.
-    Applies user canvas adjustments, detects face ONCE, verifies strictly 1 person,
-    and returns (is_valid, msg, processed_bytes).
+    True single-pass image processor and face validator.
+    Applies user canvas adjustments, converts directly in-memory to OpenCV BGR,
+    detects face ONCE, verifies strictly 1 person, performs smart crop on the same
+    PIL Image, and encodes ONCE to JPEG.
     """
     try:
-        # 1. Apply user edits
+        # 1. Single decode: apply user edits
         pil = Image.open(io.BytesIO(raw_bytes))
         pil = _fix_exif_rotation(pil).convert("RGB")
         if flip_h:
@@ -508,19 +536,20 @@ def process_and_validate_photo(
             top = max(0, min(cy - new_h // 2, max(0, ih - new_h)))
             pil = pil.crop((left, top, left + new_w, top + new_h))
 
-        edited_bytes = _pil_to_bytes(pil)
+        # In-memory conversion from PIL RGB to OpenCV BGR (Zero disk, Zero encode/decode)
+        cv_img = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
 
-        # 2. Single-pass face detection using deep YuNet + multi-scale cascades
-        faces = detect_faces_detailed(edited_bytes)
+        # 2. Face detection using deep YuNet + multi-scale cascades directly on cv_img
+        faces = detect_faces_detailed(cv_img=cv_img)
         count = len(faces)
         if count == 0:
             return False, "لم يتم اكتشاف أي وجه بشري واضح في الصورة. يرجى رفع صورة شخصية واضحة تركز على الوجه.", None
         if count > 1:
             return False, f"تحتوي الصورة على أكثر من شخص ({count} أشخاص). يجب أن تحتوي الصورة على شخص واحد فقط.", None
 
-        # 3. Smart crop to face: eliminates full body, legs, and surroundings
+        # 3. Smart crop to face: single in-memory crop and single encode
         if auto_crop or not has_manual_pan_zoom:
-            final_bytes = smart_crop_face(edited_bytes, faces=faces)
+            cropped_pil = smart_crop_face(pil_img=pil, faces=faces, return_pil=True)
         else:
             target_ar = TARGET_W / TARGET_H
             iw, ih = pil.size
@@ -535,12 +564,14 @@ def process_and_validate_photo(
                 left = (iw - crop_w) // 2
                 top = max(0, min(int((ih - crop_h) * 0.15), ih - crop_h))
             cropped = pil.crop((left, top, left + crop_w, top + crop_h))
-            final_bytes = _pil_to_bytes(cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS))
+            cropped_pil = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
 
+        final_bytes = _pil_to_bytes(cropped_pil)
         return True, "تم التحقق من الصورة بنجاح (شخص واحد).", final_bytes
 
     except Exception as e:
-        return False, f"خطأ أثناء معالجة الصورة: {e}", None
+        logger.error(f"Error processing image: {e}")
+        return False, "حدث خطأ أثناء معالجة الصورة. يرجى التأكد من صلاحية الملف والمحاولة مرة أخرى.", None
 
 
 def _college_folder(college: str) -> str:
@@ -562,15 +593,27 @@ def save_image(
         if not is_valid:
             raise ValueError(msg)
 
-    year_folder = os.path.join(upload_root, year)
+    safe_sid = re.sub(r'[^a-zA-Z0-9_-]', '', str(student_id).strip())
+    if not safe_sid:
+        raise ValueError("Invalid student ID format for image filename")
+
+    safe_year = re.sub(r'[^0-9]', '', str(year).strip())[:4] or "general"
+    col_folder = _college_folder(college)
+
+    year_folder = os.path.join(upload_root, safe_year)
     os.makedirs(year_folder, exist_ok=True)
 
-    col_folder = _college_folder(college)
     college_folder = os.path.join(year_folder, col_folder)
     os.makedirs(college_folder, exist_ok=True)
 
-    filename = f"{student_id}.jpg"
+    filename = f"{safe_sid}.jpg"
     full_path = os.path.join(college_folder, filename)
+
+    # Strict containment check against path traversal
+    real_root = os.path.realpath(upload_root)
+    real_full = os.path.realpath(full_path)
+    if not real_full.startswith(real_root + os.sep) and real_full != real_root:
+        raise ValueError("Path traversal attempt detected in save_image")
 
     with open(full_path, "wb") as f:
         f.write(image_bytes)

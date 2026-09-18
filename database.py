@@ -130,109 +130,7 @@ def _ensure_sqlite_initialized():
         print(f"[ERROR] Failed to initialize SQLite database: {e}")
 
 
-# ── Neon HTTP Adapter (Bypasses blocked port 5432 via HTTPS port 443) ───────
-class NeonHTTPCursor:
-    def __init__(self, conn):
-        self.conn = conn
-        self.description = []
-        self._rows = []
-        self._idx = 0
-        self.rowcount = -1
 
-    def execute(self, sql, params=None):
-        count = 0
-        def repl(m):
-            nonlocal count
-            count += 1
-            return f"${count}"
-        neon_sql = re.sub(r"%s", repl, sql)
-        payload = {"query": neon_sql}
-        res = None
-        for attempt in range(2):
-            try:
-                res = self.conn.session.post(self.conn.endpoint, headers=self.conn.headers, json=payload, timeout=15)
-                break
-            except Exception as e:
-                if attempt == 1:
-                    raise
-                NeonHTTPConnection._shared_session = requests.Session()
-                self.conn.session = NeonHTTPConnection._shared_session
-        if res.status_code == 200:
-            data = res.json()
-            rows = data.get("rows", [])
-            fields = data.get("fields", [])
-            int_types = {20, 21, 23}      # int8, int2, int4
-            float_types = {700, 701, 1700} # float4, float8, numeric
-            if fields and rows:
-                int_cols = [f["name"] for f in fields if f.get("dataTypeID") in int_types]
-                float_cols = [f["name"] for f in fields if f.get("dataTypeID") in float_types]
-                for r in rows:
-                    for col in int_cols:
-                        v = r.get(col)
-                        if v is not None and not isinstance(v, int):
-                            try:
-                                r[col] = int(v)
-                            except (ValueError, TypeError):
-                                pass
-                    for col in float_cols:
-                        v = r.get(col)
-                        if v is not None and not isinstance(v, (int, float)):
-                            try:
-                                r[col] = float(v)
-                            except (ValueError, TypeError):
-                                pass
-            self._rows = rows
-            self.rowcount = data.get("rowCount", len(self._rows))
-            self._idx = 0
-            self.description = [type("ColDesc", (), {"name": f["name"]})() for f in fields]
-        else:
-            raise Exception(f"Neon Query Error ({res.status_code}): {res.text}")
-
-    def fetchone(self):
-        if self._idx < len(self._rows):
-            row = self._rows[self._idx]
-            self._idx += 1
-            return row
-        return None
-
-    def fetchall(self):
-        rows = self._rows[self._idx:]
-        self._idx = len(self._rows)
-        return rows
-
-    def close(self):
-        pass
-
-
-class NeonHTTPConnection:
-    _shared_session = None
-
-    def __init__(self, db_url):
-        host_part = db_url.split("@")[1].split("/")[0]
-        self.endpoint = f"https://{host_part}/sql"
-        self.headers = {
-            "Neon-Connection-String": db_url,
-            "Content-Type": "application/json"
-        }
-        if NeonHTTPConnection._shared_session is None:
-            NeonHTTPConnection._shared_session = requests.Session()
-        self.session = NeonHTTPConnection._shared_session
-
-    def cursor(self):
-        return NeonHTTPCursor(self)
-
-    def commit(self):
-        pass
-
-    def rollback(self):
-        pass
-
-    def close(self):
-        pass
-
-
-# Global flag to avoid waiting for 15s timeout on every request if port 5432 is blocked
-_PG_PORT_BLOCKED = os.getenv("USE_NEON_HTTP", "").strip().lower() in ("true", "1", "yes")
 
 class PooledPGConnectionWrapper:
     """
@@ -320,25 +218,20 @@ def _get_pg_pool(db_url):
 
 # ── connection factory ─────────────────────────────────────────────────────
 def get_db(force_sqlite: bool = False):
-    global USE_PG, _PG_PORT_BLOCKED, DB_URL, _PG_LAST_FAILED_AT, _PG_UNAVAILABLE, _PG_WARNED
+    global USE_PG, DB_URL, _PG_LAST_FAILED_AT, _PG_UNAVAILABLE, _PG_WARNED
     import time
     current_db_url = os.getenv("DATABASE_URL", DB_URL)
     is_pg_active = bool(current_db_url) and HAS_PG and not _PG_UNAVAILABLE
-    use_neon = os.getenv("USE_NEON_HTTP", "").strip().lower() in ("true", "1", "yes")
+    is_prod = os.getenv("APP_ENV", "development").lower() == "production" or os.getenv("FLASK_ENV", "").lower() == "production"
 
     if force_sqlite or not is_pg_active or _PG_UNAVAILABLE:
+        if is_prod and current_db_url and HAS_PG:
+            raise RuntimeError("PostgreSQL database is currently unavailable in production. Refusing silent fallback to SQLite to prevent data loss.")
         USE_PG = False
         _ensure_sqlite_initialized()
         return _connect_sqlite()
 
     USE_PG = True
-
-    # If configured to use Neon HTTP directly
-    if use_neon and "neon.tech" in current_db_url.lower():
-        try:
-            return NeonHTTPConnection(current_db_url)
-        except Exception as e:
-            print(f"[WARNING] Neon HTTP connection failed: {e}")
 
     # Standard PostgreSQL Connection Pool (handles 500+ concurrent requests without dropping)
     pool = _get_pg_pool(current_db_url)
@@ -351,6 +244,8 @@ def get_db(force_sqlite: bool = False):
             print(f"[WARNING] Pool getconn failed ({pe}), trying direct connect...")
 
     if _PG_UNAVAILABLE:
+        if is_prod and current_db_url and HAS_PG:
+            raise RuntimeError("PostgreSQL database is currently unavailable in production. Refusing silent fallback to SQLite to prevent data loss.")
         USE_PG = False
         _ensure_sqlite_initialized()
         return _connect_sqlite()
@@ -364,19 +259,10 @@ def get_db(force_sqlite: bool = False):
         )
         return conn
     except Exception as e:
-        # Fallback to Neon HTTPS port 443 if standard port 5432 is blocked
-        if "neon.tech" in current_db_url.lower():
-            try:
-                conn = NeonHTTPConnection(current_db_url)
-                cur = conn.cursor()
-                cur.execute("SELECT 1")
-                print("[INFO] Bypassing blocked port 5432: Connected to Neon PostgreSQL via HTTPS (Port 443)!")
-                return conn
-            except Exception as he:
-                print(f"[WARNING] Neon HTTPS fallback failed: {he}")
-
         _PG_LAST_FAILED_AT = time.time()
         _PG_UNAVAILABLE = True
+        if is_prod:
+            raise RuntimeError(f"Critical: Failed to connect to PostgreSQL in production ({e}). Refusing fallback to SQLite.")
         if not _PG_WARNED:
             print(f"[INFO] PostgreSQL connection unavailable on localhost:5432. Active database: local SQLite ({SQLITE_PATH})")
             _PG_WARNED = True

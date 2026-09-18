@@ -621,9 +621,13 @@
       </div>
       <div class="filter-field">
         <label>الكلية</label>
-        <select id="college-filter">
+        <select id="college-filter" {% if role == 'admin' %}disabled style="background:#f1f5f9;cursor:not-allowed" title="مقيد بكليتك فقط"{% endif %}>
+          {% if role == 'admin' %}
+          <option value="{{ user_college }}">{{ user_college }}</option>
+          {% else %}
           <option value="">كل الكليات</option>
           {% for c in colleges %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          {% endif %}
         </select>
       </div>
       <div style="display:flex;gap:6px;align-self:flex-end">
@@ -748,6 +752,32 @@
   {% if role in ['superadmin', 'admin'] %}
   <!-- AUDIT -->
   <div class="tab-panel" id="panel-audit">
+    <div class="filters-bar" style="margin-bottom:16px">
+      <div class="filter-field" style="flex:2;min-width:200px">
+        <label>بحث في السجل</label>
+        <input type="text" id="audit-q" placeholder="الاسم، الرقم الجامعي، أو التفاصيل...">
+      </div>
+      <div class="filter-field" style="flex:1;min-width:180px">
+        <label>نوع الإجراء</label>
+        <select id="audit-action-filter">
+          <option value="">كل الإجراءات</option>
+          <option value="LOGIN">تسجيل دخول</option>
+          <option value="LOGOUT">تسجيل خروج</option>
+          <option value="REGISTER_STUDENT">تسجيل طالب</option>
+          <option value="STUDENT_SELF_REGISTER">تسجيل ذاتي</option>
+          <option value="UPDATE_PHOTO">تحديث صورة</option>
+          <option value="EDIT_STUDENT">تعديل بيانات</option>
+          <option value="DELETE_STUDENT">حذف طالب</option>
+          <option value="CHANGE_PASSWORD">تغيير كلمة المرور</option>
+          <option value="PASSWORD_RESET">إعادة ضبط كلمة المرور</option>
+          <option value="BULK_IMPORT_STUDENT">استيراد بيانات</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;align-self:flex-end">
+        <button class="btn btn-primary btn-sm" onclick="loadAudit(1)">بحث</button>
+        <button class="btn btn-outline btn-sm" onclick="resetAuditFilters()">مسح</button>
+      </div>
+    </div>
     <div class="card">
       <div class="card-header">
         <h2>{% if role == 'admin' %}سجل عمليات ونشاطات طلاب الكلية{% else %}سجل العمليات الكامل{% endif %}</h2>
@@ -1152,7 +1182,7 @@
         <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:#334155">سنة القيد:</label>
         <select id="exp-photo-year" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem">
           <option value="all">جميع السنوات الدراسية</option>
-          {% for y in year_range %}
+          {% for y in (all_years or year_range or years) %}
           <option value="{{ y }}">{{ y }}</option>
           {% endfor %}
         </select>
@@ -1219,90 +1249,113 @@ async function loadStudents(page = 1) {
   document.getElementById('students-tbody').innerHTML =
     '<tr class="loader-row"><td colspan="7"><div class="loader-spin"></div></td></tr>';
 
-  const res  = await fetch('/admin/students?' + new URLSearchParams({page, q, year, college}));
-  const data = await res.json();
+  try {
+    const res  = await fetch('/admin/students?' + new URLSearchParams({page, q, year, college}));
+    if (!res.ok) {
+      throw new Error(`خطأ في الخادم (${res.status})`);
+    }
+    const data = await res.json();
 
-  document.getElementById('total-badge').textContent   = data.total + ' طالب';
-  document.getElementById('results-count').textContent = data.total + ' نتيجة';
+    document.getElementById('total-badge').textContent   = (data.total || 0) + ' طالب';
+    document.getElementById('results-count').textContent = (data.total || 0) + ' نتيجة';
 
-  const tbody = document.getElementById('students-tbody');
-  if (!data.students.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
-      <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12z"/></svg>
-      <p>لا توجد نتائج مطابقة</p></div></td></tr>`;
-    document.getElementById('pagination').innerHTML = '';
-    return;
+    const tbody = document.getElementById('students-tbody');
+    if (!data.students || !data.students.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12z"/></svg>
+        <p>لا توجد نتائج مطابقة</p></div></td></tr>`;
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    loadedStudents = {};
+    tbody.innerHTML = data.students.map(s => {
+      loadedStudents[s.id] = s;
+      const baseImg = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
+        ? s.image_path : '/static/' + (s.image_path || '');
+      const imgUrl = baseImg ? (baseImg + (baseImg.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(s.updated_at || Date.now())) : '';
+      return `<tr>
+        <td><img src="${imgUrl}" class="student-thumb" onerror="this.style.opacity=0" alt=""></td>
+        <td><span class="student-id-badge">${escapeHTML(s.student_id)}</span></td>
+        <td style="font-weight:600">${escapeHTML(s.full_name)}</td>
+        <td><span class="year-tag">${escapeHTML(s.year)}</span></td>
+        <td><span class="college-tag">${escapeHTML(s.college)}</span></td>
+        <td style="color:var(--muted);font-size:.74rem;direction:ltr">${fmt(s.created_at)}</td>
+        <td>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <button onclick="openViewStudent(${s.id})" class="btn btn-outline btn-sm" title="عرض بيانات الطالب">
+              <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+            </button>
+            <button onclick="openEditStudent(${s.id})" class="btn btn-outline btn-sm" title="تعديل بيانات الطالب">
+              <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+              </svg>
+              تعديل
+            </button>
+            <button onclick="openResetStudentPw(${s.id}, '${escapeHTML(s.full_name)}', '${escapeHTML(s.student_id)}')" class="btn btn-outline btn-sm" style="color:#0f766e;border-color:#99f6e4;background:#f0fdfa" title="إعادة تعيين كلمة مرور الطالب">
+              <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+                <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
+              </svg>
+              كلمة المرور
+            </button>
+            ${ROLE === 'superadmin' ? `
+            <button onclick="confirmDel(${s.id})" class="btn btn-sm"
+              style="background:rgba(197,48,48,.08);color:var(--danger);border:1px solid rgba(197,48,48,.2)" title="حذف (المشرف العام فقط)">
+              <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+              </svg>
+            </button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    buildPager(data.page, data.pages, 'pagination', loadStudents);
+  } catch (err) {
+    document.getElementById('students-tbody').innerHTML = `<tr><td colspan="7"><div class="empty-state" style="color:var(--danger)">
+      <p>حدث خطأ أثناء تحميل بيانات الطلاب: ${escapeHTML(err.message || '')}</p>
+      <button class="btn btn-outline btn-sm" onclick="loadStudents(${page})" style="margin-top:8px">إعادة المحاولة</button>
+    </div></td></tr>`;
   }
-
-  loadedStudents = {};
-  tbody.innerHTML = data.students.map(s => {
-    loadedStudents[s.id] = s;
-    const baseImg = s.image_path && (s.image_path.startsWith('http') || s.image_path.startsWith('//'))
-      ? s.image_path : '/static/' + (s.image_path || '');
-    const imgUrl = baseImg ? (baseImg + (baseImg.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(s.updated_at || Date.now())) : '';
-    return `<tr>
-      <td><img src="${imgUrl}" class="student-thumb" onerror="this.style.opacity=0" alt=""></td>
-      <td><span class="student-id-badge">${escapeHTML(s.student_id)}</span></td>
-      <td style="font-weight:600">${escapeHTML(s.full_name)}</td>
-      <td><span class="year-tag">${escapeHTML(s.year)}</span></td>
-      <td><span class="college-tag">${escapeHTML(s.college)}</span></td>
-      <td style="color:var(--muted);font-size:.74rem;direction:ltr">${fmt(s.created_at)}</td>
-      <td>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          <button onclick="openViewStudent(${s.id})" class="btn btn-outline btn-sm" title="عرض بيانات الطالب">
-            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
-              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
-            </svg>
-          </button>
-          <button onclick="openEditStudent(${s.id})" class="btn btn-outline btn-sm" title="تعديل بيانات الطالب">
-            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
-              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-            </svg>
-            تعديل
-          </button>
-          <button onclick="openResetStudentPw(${s.id}, '${escapeHTML(s.full_name)}', '${escapeHTML(s.student_id)}')" class="btn btn-outline btn-sm" style="color:#0f766e;border-color:#99f6e4;background:#f0fdfa" title="إعادة تعيين كلمة مرور الطالب">
-            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
-              <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
-            </svg>
-            كلمة المرور
-          </button>
-          ${ROLE === 'superadmin' ? `
-          <button onclick="confirmDel(${s.id})" class="btn btn-sm"
-            style="background:rgba(197,48,48,.08);color:var(--danger);border:1px solid rgba(197,48,48,.2)" title="حذف (المشرف العام فقط)">
-            <svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24">
-              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
-            </svg>
-          </button>` : ''}
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-
-  buildPager(data.page, data.pages, 'pagination', loadStudents);
 }
 
 function buildPager(page, pages, containerId, fn) {
   const pg = document.getElementById(containerId);
-  if (pages <= 1) { pg.innerHTML = ''; return; }
+  if (!pg || pages <= 1) { if(pg) pg.innerHTML = ''; return; }
   const fnName = fn.name || 'loadStudents';
   let html = '';
   if (page > 1) html += `<button class="pg-btn" onclick="${fnName}(${page-1})">‹</button>`;
-  for (let i = 1; i <= pages; i++) {
-    if (i===1 || i===pages || Math.abs(i-page)<=2)
-      html += `<button class="pg-btn${i===page?' active':''}" onclick="${fnName}(${i})">${i}</button>`;
-    else if (Math.abs(i-page)===3)
-      html += `<span style="padding:0 3px;color:var(--muted)">…</span>`;
+
+  const range = [];
+  const delta = 2;
+  for (let i = Math.max(2, page - delta); i <= Math.min(pages - 1, page + delta); i++) {
+    range.push(i);
   }
+  if (page - delta > 2) range.unshift('…');
+  range.unshift(1);
+  if (page + delta < pages - 1) range.push('…');
+  if (pages > 1) range.push(pages);
+
+  for (const p of range) {
+    if (p === '…') {
+      html += `<span style="padding:0 3px;color:var(--muted)">…</span>`;
+    } else {
+      html += `<button class="pg-btn${p === page ? ' active' : ''}" onclick="${fnName}(${p})">${p}</button>`;
+    }
+  }
+
   if (page < pages) html += `<button class="pg-btn" onclick="${fnName}(${page+1})">›</button>`;
   pg.innerHTML = html;
 }
 
 function resetFilters() {
-  ['q','year-filter','college-filter'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el.tagName === 'SELECT') el.value = '';
-    else el.value = '';
-  });
+  document.getElementById('q').value = '';
+  document.getElementById('year-filter').value = '';
+  if (ROLE !== 'admin') {
+    document.getElementById('college-filter').value = '';
+  }
   loadStudents(1);
 }
 document.getElementById('q').addEventListener('keydown', e => { if(e.key==='Enter') loadStudents(1); });
@@ -2142,44 +2195,79 @@ async function submitResetStudentPw() {
 let auditPage = 1;
 async function loadAudit(page = 1) {
   auditPage = page;
-  const res  = await fetch('/admin/audit?page=' + page);
-  const data = await res.json();
-  const actionNames = {
-    'LOGIN': 'تسجيل دخول',
-    'LOGOUT': 'تسجيل خروج',
-    'REGISTER_STUDENT': 'تسجيل طالب',
-    'STUDENT_SELF_REGISTER': 'تسجيل ذاتي',
-    'UPDATE_PHOTO': 'تحديث صورة',
-    'EDIT_STUDENT': 'تعديل بيانات',
-    'DELETE_STUDENT': 'حذف طالب',
-    'CHANGE_PASSWORD': 'تغيير كلمة المرور',
-    'PASSWORD_RESET': 'إعادة ضبط كلمة المرور',
-    'EMAIL_VERIFIED': 'تأكيد البريد',
-    'BULK_IMPORT_STUDENT': 'استيراد بيانات'
-  };
-  const actionColors = {
-    'LOGIN': 'badge-blue',
-    'REGISTER_STUDENT': 'badge-green',
-    'STUDENT_SELF_REGISTER': 'badge-green',
-    'UPDATE_PHOTO': 'badge-gold',
-    'EDIT_STUDENT': 'badge-blue',
-    'DELETE_STUDENT': 'badge-red',
-    'CHANGE_PASSWORD': 'badge-gold',
-    'PASSWORD_RESET': 'badge-gold',
-    'EMAIL_VERIFIED': 'badge-green',
-    'BULK_IMPORT_STUDENT': 'badge-blue'
-  };
-  document.getElementById('audit-tbody').innerHTML = (data.logs && data.logs.length)
-    ? data.logs.map(l => `<tr>
-        <td><span class="badge ${actionColors[l.action] || 'badge-blue'}" style="font-size:.72rem">${escapeHTML(actionNames[l.action] || l.action)}</span></td>
-        <td style="font-size:.82rem;font-weight:600">${l.full_name ? escapeHTML(l.full_name) : '–'}</td>
-        <td style="font-size:.72rem;color:var(--muted);direction:ltr">${l.email ? escapeHTML(l.email) : '–'}</td>
-        <td style="font-size:.78rem;direction:ltr;font-family:'Courier New',monospace;font-weight:600">${l.student_id ? escapeHTML(l.student_id) : (l.target ? escapeHTML(l.target) : '–')}</td>
-        <td style="font-size:.72rem;color:var(--muted);direction:ltr">${fmt(l.created_at)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">لا توجد عمليات بعد</td></tr>';
-  buildPager(data.page, data.pages, 'audit-pager', loadAudit);
+  const tbody = document.getElementById('audit-tbody');
+  if (tbody) {
+    tbody.innerHTML = '<tr class="loader-row"><td colspan="5"><div class="loader-spin"></div></td></tr>';
+  }
+
+  const actionFilter = document.getElementById('audit-action-filter')?.value || '';
+  const qFilter = document.getElementById('audit-q')?.value || '';
+
+  try {
+    const params = new URLSearchParams({page});
+    if (actionFilter) params.append('action', actionFilter);
+    if (qFilter) params.append('q', qFilter);
+
+    const res  = await fetch('/admin/audit?' + params.toString());
+    if (!res.ok) throw new Error(`خطأ في استجابة الخادم (${res.status})`);
+    const data = await res.json();
+
+    const actionNames = {
+      'LOGIN': 'تسجيل دخول',
+      'LOGOUT': 'تسجيل خروج',
+      'REGISTER_STUDENT': 'تسجيل طالب',
+      'STUDENT_SELF_REGISTER': 'تسجيل ذاتي',
+      'UPDATE_PHOTO': 'تحديث صورة',
+      'EDIT_STUDENT': 'تعديل بيانات',
+      'DELETE_STUDENT': 'حذف طالب',
+      'CHANGE_PASSWORD': 'تغيير كلمة المرور',
+      'PASSWORD_RESET': 'إعادة ضبط كلمة المرور',
+      'EMAIL_VERIFIED': 'تأكيد البريد',
+      'BULK_IMPORT_STUDENT': 'استيراد بيانات'
+    };
+    const actionColors = {
+      'LOGIN': 'badge-blue',
+      'REGISTER_STUDENT': 'badge-green',
+      'STUDENT_SELF_REGISTER': 'badge-green',
+      'UPDATE_PHOTO': 'badge-gold',
+      'EDIT_STUDENT': 'badge-blue',
+      'DELETE_STUDENT': 'badge-red',
+      'CHANGE_PASSWORD': 'badge-gold',
+      'PASSWORD_RESET': 'badge-gold',
+      'EMAIL_VERIFIED': 'badge-green',
+      'BULK_IMPORT_STUDENT': 'badge-blue'
+    };
+
+    if (tbody) {
+      tbody.innerHTML = (data.logs && data.logs.length)
+        ? data.logs.map(l => `<tr>
+            <td><span class="badge ${actionColors[l.action] || 'badge-blue'}" style="font-size:.72rem">${escapeHTML(actionNames[l.action] || l.action)}</span></td>
+            <td style="font-size:.82rem;font-weight:600">${l.full_name ? escapeHTML(l.full_name) : '–'}</td>
+            <td style="font-size:.72rem;color:var(--muted);direction:ltr">${l.email ? escapeHTML(l.email) : '–'}</td>
+            <td style="font-size:.78rem;direction:ltr;font-family:'Courier New',monospace;font-weight:600">${l.student_id ? escapeHTML(l.student_id) : (l.target ? escapeHTML(l.target) : '–')}</td>
+            <td style="font-size:.72rem;color:var(--muted);direction:ltr">${fmt(l.created_at)}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">لا توجد عمليات مطابقة</td></tr>';
+    }
+    buildPager(data.page, data.pages, 'audit-pager', loadAudit);
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--danger)">
+        تعذر تحميل سجل العمليات: ${escapeHTML(err.message || '')}
+        <br><button class="btn btn-outline btn-sm" onclick="loadAudit(${page})" style="margin-top:8px">إعادة المحاولة</button>
+      </td></tr>`;
+    }
+  }
 }
+
+function resetAuditFilters() {
+  const aq = document.getElementById('audit-q');
+  const aact = document.getElementById('audit-action-filter');
+  if (aq) aq.value = '';
+  if (aact) aact.value = '';
+  loadAudit(1);
+}
+document.getElementById('audit-q')?.addEventListener('keydown', e => { if (e.key === 'Enter') loadAudit(1); });
 
 // Export Photos Modal logic
 function openExportPhotosModal() {
@@ -2200,7 +2288,7 @@ document.getElementById('export-photos-modal')?.addEventListener('click', functi
   if (e.target === this) closeExportPhotosModal();
 });
 
-function startPhotoDownload() {
+async function startPhotoDownload() {
   const colEl = document.getElementById('exp-photo-college');
   const yrEl = document.getElementById('exp-photo-year');
   const col = colEl ? colEl.value : 'all';
@@ -2212,22 +2300,50 @@ function startPhotoDownload() {
     statusEl.style.display = 'block';
     statusEl.style.background = '#e0f2fe';
     statusEl.style.color = '#0369a1';
-    statusEl.textContent = 'جارٍ تحضير وضغط صور الطلاب من السيرفر… يرجى الانتظار لحين بدء التنزيل.';
+    statusEl.textContent = 'جارٍ تحضير وضغط صور الطلاب من السيرفر… يرجى الانتظار لحين اكتمال التنزيل.';
   }
 
   if (btn) btn.disabled = true;
 
   const url = `/admin/export-photos?college=${encodeURIComponent(col)}&year=${encodeURIComponent(yr)}`;
-  window.location.href = url;
 
-  setTimeout(() => {
-    if (btn) btn.disabled = false;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      let errMsg = 'فشل تنزيل ملف الصور';
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.message) errMsg = errJson.message;
+      } catch (e) {}
+      throw new Error(errMsg);
+    }
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = downloadUrl;
+    const safeCol = (!col || col === 'all') ? 'all' : col.replace(/[\s/\\:*?"<>|]+/g, '_');
+    a.download = `bua_photos_${safeCol}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+
     if (statusEl) {
       statusEl.style.background = '#f0fdf4';
       statusEl.style.color = '#15803d';
-      statusEl.textContent = 'تم إرسال طلب تنزيل ملف الصور بنجاح! إذا لم يبدأ التنزيل تلقائياً اضغط الزر مرة أخرى.';
+      statusEl.textContent = 'تم تنزيل وتجهيز ملف الصور بنجاح ✓';
     }
-  }, 4500);
+  } catch (err) {
+    if (statusEl) {
+      statusEl.style.background = '#fef2f2';
+      statusEl.style.color = '#b91c1c';
+      statusEl.textContent = err.message || 'حدث خطأ أثناء تحميل الملف';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // Boot

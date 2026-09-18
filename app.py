@@ -5,7 +5,7 @@ from functools import wraps
 import bcrypt
 from dotenv import load_dotenv
 from flask import (Flask, request, jsonify, session, redirect,
-                   url_for, render_template, send_file, abort, g)
+                   url_for, render_template, send_file, abort, g, after_this_request)
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_mail import Mail, Message
@@ -25,7 +25,7 @@ from database import get_db, init_db, COLLEGES, ROLES, log_action, ph, is_use_pg
 from image_processor import (detect_faces, apply_edits, face_detected, save_image,
                               archive_old_image, move_student_images_locally,
                               TARGET_W, TARGET_H, validate_single_person,
-                              process_and_validate_photo)
+                              process_and_validate_photo, validate_image_magic_bytes)
 from background_worker import (
     submit_photo_processing_job, get_job_status, wait_for_job,
     submit_async_email, submit_bulk_import_job, JobStatus
@@ -141,7 +141,29 @@ ARABIC_MAP = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
-def to_eng(s): return s.translate(ARABIC_MAP)
+def to_eng(s): return s.translate(ARABIC_MAP) if s else ""
+
+def safe_int(val, default=1, min_val=None, max_val=None):
+    try:
+        res = int(val)
+        if min_val is not None and res < min_val:
+            res = min_val
+        if max_val is not None and res > max_val:
+            res = max_val
+        return res
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(val, default=0.0, min_val=None, max_val=None):
+    try:
+        res = float(val)
+        if min_val is not None and res < min_val:
+            res = min_val
+        if max_val is not None and res > max_val:
+            res = max_val
+        return res
+    except (ValueError, TypeError):
+        return default
 
 def validate_university_email(email: str) -> bool:
     email = email.strip().lower()
@@ -500,32 +522,23 @@ def auth_resend_verification():
             cur.execute(f"SELECT * FROM users WHERE email={ph()}", (email_val,))
             u = _row_to_dict(cur.fetchone())
 
-            if u:
-                if u.get("email_verified"):
-                    msg = "هذا الحساب مفعّل بالفعل! يمكنك تسجيل الدخول مباشرة."
-                    msg_type = "success"
-                elif not u.get("is_active"):
-                    msg = "هذا الحساب موقوف. يرجى مراجعة إدارة النظام."
-                    msg_type = "error"
-                else:
-                    token = secrets.token_urlsafe(32)
-                    cur.execute(
-                        f"UPDATE users SET verify_token={ph()} WHERE id={ph()}",
-                        (token, u["id"])
-                    )
-                    db.commit()
-                    link = url_for("auth_verify", token=token, _external=True)
-                    send_email(
-                        email_val,
-                        "تفعيل حساب نظام التسجيل",
-                        _email_verify_html(u["full_name"], link)
-                    )
-                    msg = "تم إرسال رابط التفعيل الجديد بنجاح إلى بريدك الجامعي! يرجى التحقق من صندوق الوارد (أو مجلد Spam)."
-                    msg_type = "success"
-            else:
-                msg = "إذا كان هذا البريد مسجلاً لدينا وغير مفعّل، فقد تم إرسال رابط التفعيل إليه."
-                msg_type = "info"
+            if u and not u.get("email_verified") and u.get("is_active"):
+                token = secrets.token_urlsafe(32)
+                cur.execute(
+                    f"UPDATE users SET verify_token={ph()} WHERE id={ph()}",
+                    (token, u["id"])
+                )
+                db.commit()
+                link = url_for("auth_verify", token=token, _external=True)
+                send_email(
+                    email_val,
+                    "تفعيل حساب نظام التسجيل",
+                    _email_verify_html(u["full_name"], link)
+                )
+
             db.close()
+            msg = "إذا كان هذا البريد مسجلاً لدينا وغير مفعّل، فقد تم إرسال رابط التفعيل إليه. يرجى التحقق من صندوق الوارد (أو Spam)."
+            msg_type = "info"
 
     return render_template(
         "auth_resend.html",
@@ -823,11 +836,11 @@ def register():
         code        = to_eng(request.form.get("code","").strip())
         college     = request.form.get("college","").strip()
         student_email = request.form.get("student_email","").strip().lower()
-        rotation    = int(request.form.get("rotation","0"))
+        rotation    = safe_int(request.form.get("rotation","0"), default=0, min_val=-360, max_val=360)
         flip_h      = request.form.get("flip_h","") == "1"
-        zoom        = float(request.form.get("zoom","1.0"))
-        offset_x    = float(request.form.get("offset_x","0.0"))
-        offset_y    = float(request.form.get("offset_y","0.0"))
+        zoom        = safe_float(request.form.get("zoom","1.0"), default=1.0, min_val=0.1, max_val=10.0)
+        offset_x    = safe_float(request.form.get("offset_x","0.0"), default=0.0, min_val=-2.0, max_val=2.0)
+        offset_y    = safe_float(request.form.get("offset_y","0.0"), default=0.0, min_val=-2.0, max_val=2.0)
         auto_crop   = request.form.get("auto_crop","1") == "1"
         image_file  = request.files.get("image")
 
@@ -884,6 +897,10 @@ def register():
         if len(raw_bytes) > app.config["MAX_CONTENT_LENGTH"]:
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
 
+        is_magic_ok, magic_msg = validate_image_magic_bytes(raw_bytes)
+        if not is_magic_ok:
+            return jsonify(success=False, message=magic_msg), 400
+
         # Offload image processing & face validation to dedicated worker pool
         job_id = submit_photo_processing_job(
             raw_bytes=raw_bytes,
@@ -923,7 +940,8 @@ def register():
             # ── Create or update student user account so student can log in with password = student_id ──
             student_login_email = (student_email if (student_email and validate_university_email(student_email))
                                    else f"{student_id}@{UNIVERSITY_DOMAIN}")
-            hashed_pw = hash_pw(student_id)
+            temp_pw = secrets.token_urlsafe(8)
+            hashed_pw = hash_pw(temp_pw)
             cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, student_id))
             existing_user = cur.fetchone()
             if not existing_user:
@@ -1008,8 +1026,27 @@ def student_card(student_id):
         db.close()
         abort(404)
     db.close()
-    # The student card can ONLY be edited by the student who owns it
-    can_edit = (session.get("role") == "student" and session.get("student_id") == student_id)
+
+    # ── Authentication and Authorization checks ──
+    uid = session.get("user_id")
+    if not uid:
+        return redirect(url_for("login", next=request.path))
+
+    role = session.get("role")
+    my_sid = session.get("student_id")
+    user_col = session.get("college")
+
+    # Superadmin and staff can view any card; College admin can view their college; Student can only view own card
+    if role in ("superadmin", "staff"):
+        pass
+    elif role == "admin" and user_col and user_col == row.get("college"):
+        pass
+    elif role == "student" and my_sid == student_id:
+        pass
+    else:
+        abort(403)
+
+    can_edit = (role == "student" and my_sid == student_id)
     return render_template("student_card.html", student=row, can_edit=can_edit)
 
 
@@ -1042,11 +1079,11 @@ def update_photo(student_id):
     if not image_file or not image_file.filename.lower().endswith((".jpg",".jpeg")):
         db.close(); return jsonify(success=False, message="يرجى رفع صورة JPG"), 400
 
-    rotation = int(request.form.get("rotation","0"))
+    rotation = safe_int(request.form.get("rotation","0"), default=0, min_val=-360, max_val=360)
     flip_h   = request.form.get("flip_h","") == "1"
-    zoom     = float(request.form.get("zoom","1.0"))
-    offset_x = float(request.form.get("offset_x","0.0"))
-    offset_y = float(request.form.get("offset_y","0.0"))
+    zoom     = safe_float(request.form.get("zoom","1.0"), default=1.0, min_val=0.1, max_val=10.0)
+    offset_x = safe_float(request.form.get("offset_x","0.0"), default=0.0, min_val=-2.0, max_val=2.0)
+    offset_y = safe_float(request.form.get("offset_y","0.0"), default=0.0, min_val=-2.0, max_val=2.0)
     auto_crop = request.form.get("auto_crop","1") == "1"
     is_async = (
         request.headers.get("X-Async") in ("1", "true") or
@@ -1056,6 +1093,10 @@ def update_photo(student_id):
     raw = image_file.read()
     if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
         db.close(); return jsonify(success=False, message="الصورة أكبر من 5 MB"), 400
+
+    is_magic_ok, magic_msg = validate_image_magic_bytes(raw)
+    if not is_magic_ok:
+        db.close(); return jsonify(success=False, message=magic_msg), 400
 
     year = row["year"]
     college = row["college"]
@@ -1125,6 +1166,7 @@ def update_photo(student_id):
 
 @app.route("/api/crop-preview", methods=["POST"])
 @csrf.exempt
+@limiter.limit(lambda: os.getenv("LIMIT_CROP_PREVIEW", "60 per hour"))
 def api_crop_preview():
     """
     Instant preview endpoint: returns professionally cropped 400x500 face photo
@@ -1135,12 +1177,19 @@ def api_crop_preview():
         return jsonify(success=False, message="غير مصرح بالدخول"), 401
 
     image_file = request.files.get("image")
-    if not image_file:
+    if not image_file or not image_file.filename:
         return jsonify(success=False, message="لم يتم إرسال أي صورة"), 400
+
+    if not image_file.filename.lower().endswith((".jpg", ".jpeg", ".png")):
+        return jsonify(success=False, message="يُسمح فقط برفع صور JPG أو PNG"), 400
 
     raw_bytes = image_file.read()
     if len(raw_bytes) > app.config["MAX_CONTENT_LENGTH"]:
         return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
+
+    is_magic_ok, magic_msg = validate_image_magic_bytes(raw_bytes)
+    if not is_magic_ok:
+        return jsonify(success=False, message=magic_msg), 400
 
     ok, face_msg, processed = process_and_validate_photo(raw_bytes, auto_crop=True)
     if not ok:
@@ -1232,7 +1281,7 @@ def admin_students():
     q        = request.args.get("q","").strip()
     year     = request.args.get("year","").strip()
     college  = request.args.get("college","").strip()
-    page     = max(int(request.args.get("page",1)),1)
+    page     = safe_int(request.args.get("page", 1), default=1, min_val=1)
     per_page = 20
     role     = session.get("role")
     user_college = session.get("college")  # admin restricted to own college
@@ -1245,10 +1294,13 @@ def admin_students():
             conditions.append("(student_id LIKE ? OR full_name LIKE ?)")
         params += [f"%{q}%", f"%{q}%"]
     if year:    conditions.append(f"year={ph()}");    params.append(year)
-    if college: conditions.append(f"college={ph()}"); params.append(college)
-    # admin can only see own college
+
+    # Scoping: admin (supervisor) can only see their own college
     if role == "admin" and user_college:
-        conditions.append(f"college={ph()}"); params.append(user_college)
+        college = user_college
+    if college:
+        conditions.append(f"college={ph()}")
+        params.append(college)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     db    = get_db(); cur = db.cursor()
@@ -1442,27 +1494,17 @@ def admin_edit_student(sid):
             user_id_val = u_match["id"] if isinstance(u_match, dict) else u_match[0]
             old_hashed = u_match["password_hash"] if isinstance(u_match, dict) else (u_match[2] if len(u_match) > 2 else None)
 
-            if old_hashed and check_pw(old_student_id, old_hashed):
-                # Password was still default student_id, keep it synced to new ID
-                new_hashed_pw = hash_pw(new_student_id)
-                cur.execute(
-                    f"""UPDATE users 
-                        SET student_id={ph()}, full_name={ph()}, college={ph()}, 
-                            email={ph()}, password_hash={ph()} 
-                        WHERE id={ph()}""",
-                    (new_student_id, full_name, college, student_login_email, new_hashed_pw, user_id_val)
-                )
-            else:
-                # Custom password preserved, update user identity and college
-                cur.execute(
-                    f"""UPDATE users 
-                        SET student_id={ph()}, full_name={ph()}, college={ph()}, email={ph()} 
-                        WHERE id={ph()}""",
-                    (new_student_id, full_name, college, student_login_email, user_id_val)
-                )
+            # Update user identity and college while strictly preserving user's existing password hash
+            cur.execute(
+                f"""UPDATE users 
+                    SET student_id={ph()}, full_name={ph()}, college={ph()}, email={ph()} 
+                    WHERE id={ph()}""",
+                (new_student_id, full_name, college, student_login_email, user_id_val)
+            )
     else:
-        # Create student user account if it did not exist
-        new_hashed_pw = hash_pw(new_student_id)
+        # Create student user account if it did not exist with secure random password
+        new_temp_pw = secrets.token_urlsafe(8)
+        new_hashed_pw = hash_pw(new_temp_pw)
         cur.execute(
             f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
             (student_login_email, new_hashed_pw, full_name, "student",
@@ -1594,11 +1636,12 @@ def admin_export():
         ws.row_dimensions[ri].height=22
     ws.freeze_panes="A2"
     ws.auto_filter.ref=f"A1:F{len(rows)+1}"
-    tmp=tempfile.NamedTemporaryFile(suffix=".xlsx",delete=False)
-    wb.save(tmp.name); tmp.close()
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
     now=datetime.now().strftime("%Y%m%d_%H%M%S")
     log_action(session.get("user_id"),"EXPORT_EXCEL",ip=request.remote_addr)
-    return send_file(tmp.name,as_attachment=True,
+    return send_file(buf, as_attachment=True,
                      download_name=f"students_{now}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -1686,6 +1729,15 @@ def admin_export_photos():
 
     safe_col = "all" if not college_filter or college_filter == "all" else re.sub(r'[\s/\\:*?"<>|]+', "_", college_filter)
     download_filename = f"bua_photos_{safe_col}_{now_str}.zip"
+
+    @after_this_request
+    def cleanup_temp_zip(response):
+        try:
+            if os.path.exists(tmp_zip_path):
+                os.remove(tmp_zip_path)
+        except Exception as e:
+            app.logger.warning(f"Error removing temp zip {tmp_zip_path}: {e}")
+        return response
 
     return send_file(
         tmp_zip_path,
@@ -2025,31 +2077,46 @@ def admin_backup_users_gdrive():
 @app.route("/admin/audit")
 @role_required("superadmin", "admin", "staff")
 def admin_audit():
-    page     = max(int(request.args.get("page", 1)), 1)
+    page     = safe_int(request.args.get("page", 1), default=1, min_val=1)
     per_page = 50
     offset   = (page - 1) * per_page
+    action_filter = request.args.get("action", "").strip()
+    q        = request.args.get("q", "").strip()
     db = get_db(); cur = db.cursor()
     role = session.get("role")
     user_college = session.get("college")
 
-    where_sql = ""
+    where_clauses = []
     params = []
 
     if role == "admin" and user_college:
         # College supervisor sees strictly their own college's students' activities
-        where_sql = f"""WHERE (
+        where_clauses.append(f"""(
             (u.role = 'student' AND (u.college = {ph()} OR s.college = {ph()}))
             OR (a.target IN (SELECT student_id FROM students WHERE college = {ph()}))
             OR (a.target IN (SELECT student_id FROM users WHERE college = {ph()} AND role = 'student'))
             OR (a.target IN (SELECT email FROM users WHERE college = {ph()} AND role = 'student'))
             OR (a.target IN (SELECT h.old_student_id FROM student_id_history h JOIN students st ON h.new_student_id = st.student_id WHERE st.college = {ph()}))
-        )"""
-        params = [user_college, user_college, user_college, user_college, user_college, user_college]
+        )""")
+        params += [user_college, user_college, user_college, user_college, user_college, user_college]
     elif role == "staff":
-        where_sql = """WHERE (
+        where_clauses.append("""(
             a.action IN ('REGISTER_STUDENT', 'UPDATE_PHOTO', 'DELETE_STUDENT', 'EDIT_STUDENT', 'BULK_IMPORT_STUDENT', 'STUDENT_SELF_REGISTER')
             OR u.role = 'student'
-        )"""
+        )""")
+
+    if action_filter:
+        where_clauses.append(f"a.action = {ph()}")
+        params.append(action_filter)
+
+    if q:
+        if is_use_pg():
+            where_clauses.append("(a.target ILIKE %s OR a.detail ILIKE %s OR s.full_name ILIKE %s OR u.full_name ILIKE %s)")
+        else:
+            where_clauses.append("(a.target LIKE ? OR a.detail LIKE ? OR s.full_name LIKE ? OR u.full_name LIKE ?)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"]
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
     count_query = f"""
         SELECT COUNT(*) AS c
@@ -2158,7 +2225,7 @@ def admin_panel():
     yrs=[_row_to_dict(r)["year"] for r in cur.fetchall()]
     db.close()
     return render_template("admin_panel.html",
-        years=yrs, all_years=YEAR_RANGE,
+        years=yrs, all_years=YEAR_RANGE, year_range=YEAR_RANGE,
         colleges=COLLEGES, roles=ROLES,
         role=session.get("role"),
         user_name=session.get("user_name"),
@@ -2338,7 +2405,6 @@ def bulk_import():
             # ── Create student user account ──
             # Email = student_id@domain  (e.g. 2024001001@university.edu.eg)
             student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
-            temp_pw             = sid
             hashed_pw           = hash_pw(temp_pw)
 
             cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, sid))
@@ -2421,9 +2487,10 @@ def bulk_import_template():
         ws.row_dimensions[ri].height = 20
 
     ws.freeze_panes = "A2"
-    tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
-    wb.save(tmp.name); tmp.close()
-    return send_file(tmp.name, as_attachment=True,
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
                      download_name="students_import_template.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -2528,21 +2595,37 @@ def student_self_register_post():
 
         # Extract student info automatically from email or database
         stu_info   = extract_student_info_from_email(email)
-        student_id = u.get("student_id") or stu_info.get("student_id") or session.get("student_id") or to_eng(request.form.get("student_id","").strip())
-        year       = stu_info.get("year") or (student_id[:4] if len(student_id) >= 4 else to_eng(request.form.get("year","").strip()))
-        code       = stu_info.get("code") or (student_id[4:] if len(student_id) > 4 else to_eng(request.form.get("code","").strip()))
+        form_sid   = to_eng(request.form.get("student_id","").strip())
+        existing_sid = u.get("student_id") or stu_info.get("student_id") or session.get("student_id")
+
+        if existing_sid:
+            student_id = str(existing_sid).strip()
+        elif form_sid:
+            student_id = form_sid
+        else:
+            student_id = ""
+
+        year = stu_info.get("year") or (student_id[:4] if len(student_id) >= 4 else to_eng(request.form.get("year","").strip()))
+        code = stu_info.get("code") or (student_id[4:] if len(student_id) > 4 else to_eng(request.form.get("code","").strip()))
+
+        is_valid_id, err_msg = validate_student_id(year, code)
+        if not is_valid_id:
+            return jsonify(success=False, message=f"الرقم الجامعي غير صالح: {err_msg}"), 400
+
+        student_id = f"{year}{code}"
+
+        # Prevent student identity spoofing: cannot claim an ID differing from assigned account
+        if u.get("student_id") and str(u.get("student_id")).strip() != student_id:
+            return jsonify(success=False, message="غير مصرح: لا يمكنك التسجيل برقم جامعي مختلف عن حسابك"), 403
 
         college    = request.form.get("college","").strip()
-        rotation   = int(request.form.get("rotation","0"))
+        rotation   = safe_int(request.form.get("rotation","0"), default=0, min_val=-360, max_val=360)
         flip_h     = request.form.get("flip_h","") == "1"
-        zoom       = float(request.form.get("zoom","1.0"))
-        offset_x   = float(request.form.get("offset_x","0.0"))
-        offset_y   = float(request.form.get("offset_y","0.0"))
+        zoom       = safe_float(request.form.get("zoom","1.0"), default=1.0, min_val=0.1, max_val=10.0)
+        offset_x   = safe_float(request.form.get("offset_x","0.0"), default=0.0, min_val=-2.0, max_val=2.0)
+        offset_y   = safe_float(request.form.get("offset_y","0.0"), default=0.0, min_val=-2.0, max_val=2.0)
         auto_crop  = request.form.get("auto_crop","1") == "1"
         image_file = request.files.get("image")
-
-        if not student_id or not year or not code:
-            return jsonify(success=False, message="تعذر استخراج كود الطالب وسنة القيد من البريد الجامعي"), 400
 
         if not full_name:
             return jsonify(success=False, message="اسم الطالب غير مسجل"), 400
@@ -2573,6 +2656,10 @@ def student_self_register_post():
         raw = image_file.read()
         if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
+
+        is_magic_ok, magic_msg = validate_image_magic_bytes(raw)
+        if not is_magic_ok:
+            return jsonify(success=False, message=magic_msg), 400
 
         # Offload image processing & face validation to dedicated worker pool
         job_id = submit_photo_processing_job(
@@ -2648,6 +2735,8 @@ def gdrive_auth():
         return "Error: GOOGLE_CLIENT_ID is not configured in .env", 400
         
     redirect_uri = f"{request.scheme}://{request.host}/admin/gdrive/callback"
+    oauth_state = secrets.token_urlsafe(32)
+    session["gdrive_oauth_state"] = oauth_state
     
     auth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
@@ -2657,6 +2746,7 @@ def gdrive_auth():
         f"&scope=https://www.googleapis.com/auth/drive"
         f"&access_type=offline"
         f"&prompt=consent"
+        f"&state={oauth_state}"
     )
     return redirect(auth_url)
 
@@ -2667,6 +2757,15 @@ def gdrive_callback():
     if session.get("role") != "superadmin":
         abort(403)
         
+    # State CSRF verification
+    req_state = request.args.get("state")
+    expected_state = session.pop("gdrive_oauth_state", None)
+    if not req_state or not expected_state or not secrets.compare_digest(req_state, expected_state):
+        return render_template("auth_message.html",
+            title="فشل التحقق الأمني",
+            msg="رمز الحماية OAuth State غير صالح أو منتهي الصلاحية (محتمل هجوم CSRF).",
+            type="error"), 403
+
     code = request.args.get("code")
     if not code:
         err = request.args.get("error")
@@ -2696,18 +2795,35 @@ def gdrive_callback():
             tokens = res.json()
             refresh_token = tokens.get("refresh_token")
             
-            html = f"""
-            <div dir="rtl" style="font-family:Cairo,Arial,sans-serif;max-width:600px;margin:50px auto;padding:30px;border:1px solid #dce3ef;border-radius:14px;background:#f0f4f9;box-shadow:0 8px 30px rgba(0,0,0,0.05)">
-              <h1 style="color:#1a73e8;margin-top:0">🎉 تم الاتصال بـ Google Drive بنجاح!</h1>
-              <p style="color:#4a5568;line-height:1.6">تم الحصول على رمز التحديث (Refresh Token) بنجاح. يرجى نسخه ووضعه في ملف <strong>.env</strong> الخاص بالتطبيق:</p>
-              
-              <div style="background:#2d3748;color:#fff;padding:16px;border-radius:8px;font-family:monospace;font-size:0.9rem;word-break:break-all;margin:20px 0;user-select:all" title="انقر لتحديد الكل">
-                GOOGLE_REFRESH_TOKEN={refresh_token}
-              </div>
-              
-              <p style="color:#e53e3e;font-size:0.85rem;font-weight:bold">* تنبيه: هذا الرمز سري للغاية ويسمح بالوصول لملفاتك، لا تشاركه مع أي شخص.</p>
-              <p style="color:#718096;font-size:0.8rem">بعد تعديل ملف .env، أعد تشغيل السيرفر لتفعيل مزامنة الصور تلقائياً.</p>
-              <a href="/" style="display:inline-block;margin-top:20px;padding:10px 20px;background:#1a73e8;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">الذهاب للوحة التحكم</a>
+            # Automatically save refresh_token to .env without exposing in DOM
+            if refresh_token:
+                try:
+                    env_path = os.path.join(os.path.dirname(__file__), ".env")
+                    if os.path.exists(env_path):
+                        with open(env_path, "r", encoding="utf-8") as ef:
+                            lines = ef.readlines()
+                        found = False
+                        new_lines = []
+                        for l in lines:
+                            if l.startswith("GOOGLE_REFRESH_TOKEN="):
+                                new_lines.append(f"GOOGLE_REFRESH_TOKEN={refresh_token}\n")
+                                found = True
+                            else:
+                                new_lines.append(l)
+                        if not found:
+                            new_lines.append(f"\nGOOGLE_REFRESH_TOKEN={refresh_token}\n")
+                        with open(env_path, "w", encoding="utf-8") as ef:
+                            ef.writelines(new_lines)
+                        os.environ["GOOGLE_REFRESH_TOKEN"] = refresh_token
+                except Exception as e_env:
+                    app.logger.warning(f"Failed to auto-write token to .env: {e_env}")
+
+            html = """
+            <div dir="rtl" style="font-family:Cairo,Arial,sans-serif;max-width:560px;margin:50px auto;padding:32px;border:1px solid #dce3ef;border-radius:14px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,0.06);text-align:center">
+              <div style="width:54px;height:54px;background:#f0fdf4;color:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:1.6rem">✓</div>
+              <h1 style="color:#1e293b;font-size:1.3rem;margin-bottom:10px">تم ربط Google Drive بنجاح وأمان!</h1>
+              <p style="color:#64748b;font-size:0.9rem;line-height:1.6;margin-bottom:24px">تم التحقق من بيانات الاعتماد وتخزين رمز التحديث بشكل آمن في إعدادات النظام لتفعيل النسخ الاحتياطي التلقائي.</p>
+              <a href="/dashboard" style="display:inline-block;padding:10px 24px;background:#1a3a6b;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.9rem">العودة للوحة التحكم</a>
             </div>
             """
             return html

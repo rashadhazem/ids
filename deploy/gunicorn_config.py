@@ -9,11 +9,12 @@ import os
 bind = os.getenv("GUNICORN_BIND", "127.0.0.1:5000")
 backlog = 2048  # High socket queue to prevent connection refusal under surge traffic
 
-# High-Concurrency Async Workers (Gevent Greenlets)
-# Standard formula: (2 * cores) + 1
-workers = max(3, multiprocessing.cpu_count() * 2 + 1)
-worker_class = "gevent"
-worker_connections = 1000  # Capable of 3,000+ simultaneous persistent connections
+# High-Performance Threaded Workers (gthread)
+# Native OS threads release the GIL during blocking C-extensions (OpenCV & Pillow)
+# and prevent worker starvation / reaping under heavy concurrent uploads.
+workers = int(os.getenv("GUNICORN_WORKERS", max(2, multiprocessing.cpu_count())))
+worker_class = "gthread"
+threads = int(os.getenv("GUNICORN_THREADS", 16))
 
 # Timeouts & Keep-alive
 timeout = 120

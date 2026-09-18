@@ -134,7 +134,8 @@ class TestBulkImportExcel(unittest.TestCase):
                 u_dict = dict(u_row) if hasattr(u_row, 'keys') else dict(zip([d[0] for d in cur.description], u_row))
                 self.assertIsNotNone(u_dict, f"User account for {sid} should exist in users table")
                 self.assertIsNone(u_dict.get("password_plain"))
-                self.assertTrue(check_pw(sid, u_dict["password_hash"]), "Default temp password must match student_id")
+                self.assertFalse(check_pw(sid, u_dict["password_hash"]), "Security fix (S3): Temp password must NOT be predictable student_id")
+                self.assertTrue(bool(u_dict.get("password_hash")), "User must have a valid bcrypt password hash")
             db.close()
 
     def test_03_duplicate_detection(self):
