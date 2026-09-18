@@ -175,7 +175,7 @@ def validate_full_name(name: str) -> tuple[bool, str]:
     name = (name or "").strip()
     if not name:
         return False, "يرجى إدخال الاسم"
-    if not re.fullmatch(r"^[\u0621-\u064A\u0671\s]+$", name):
+    if not re.fullmatch(r"^[\u0621-\u064A\u064B-\u065F\u0671\s]+$", name):
         return False, "الاسم يجب أن يكون باللغة العربية فقط (بدون أرقام أو حروف إنجليزية)"
     parts = [p for p in name.split() if p]
     if len(parts) < 4:
@@ -184,8 +184,8 @@ def validate_full_name(name: str) -> tuple[bool, str]:
 
 def validate_student_id(year: str, code: str) -> tuple[bool, str]:
     if not re.fullmatch(r"\d{4}", year):   return False, "السنة يجب أن تكون 4 أرقام"
-    if not (CURRENT_YEAR - 10 <= int(year) <= CURRENT_YEAR):
-        return False, f"سنة القيد غير صالحة. يجب أن تكون بين {CURRENT_YEAR - 10} و {CURRENT_YEAR}"
+    if not (CURRENT_YEAR - 10 <= int(year) <= CURRENT_YEAR + 1):
+        return False, f"سنة القيد غير صالحة. يجب أن تكون بين {CURRENT_YEAR - 10} و {CURRENT_YEAR + 1}"
     if not re.fullmatch(r"\d{6}|\d{8}", code): return False, "الكود يجب أن يكون 6 أو 8 أرقام"
     return True, ""
 
@@ -365,51 +365,59 @@ def login():
     client_ip = request.remote_addr or "127.0.0.1"
 
     if request.method == "POST":
-        identifier = (request.form.get("identifier") or request.form.get("email") or "").strip().lower()
-        identifier_val = identifier
+        raw_identifier = (request.form.get("identifier") or request.form.get("email") or "").strip()
+        identifier = to_eng(raw_identifier).lower()
+        identifier_val = raw_identifier
         pw = request.form.get("password", "")
 
-        db = get_db(); cur = db.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (identifier, identifier))
-        u = _row_to_dict(cur.fetchone()); db.close()
-
-        if not u:
+        if not identifier:
             brute_protector.record_failure(client_ip)
-            error = "البريد الإلكتروني أو الرقم الجامعي غير مسجل"
-        elif not u.get("is_active"):
-            error = "الحساب موقوف. تواصل مع مدير النظام"
-        elif not u.get("email_verified"):
-            error = "يرجى تفعيل بريدك الإلكتروني أولاً"
-            unverified_email = u.get("email") or identifier
-        elif not check_pw(pw, u.get("password_hash")):
+            error = "يرجى إدخال الرقم الجامعي أو البريد الإلكتروني"
+        elif not pw:
             brute_protector.record_failure(client_ip)
-            error = "كلمة المرور غير صحيحة"
+            error = "يرجى إدخال كلمة المرور"
         else:
-            brute_protector.record_success(client_ip)
-            csrf_token_val = session.get("csrf_token")
-            session.clear()
-            if csrf_token_val:
-                session["csrf_token"] = csrf_token_val
-            session["user_id"]    = u["id"]
-            session["user_name"]  = u["full_name"]
-            session["role"]       = u["role"]
-            session["email"]      = u["email"]
-            session["college"]    = u.get("college") or ""
-            session["student_id"] = u.get("student_id") or ""
-            log_action(u["id"], "LOGIN", ip=request.remote_addr)
+            db = get_db(); cur = db.cursor()
+            cur.execute(f"SELECT * FROM users WHERE email={ph()} OR student_id={ph()}", (identifier, identifier))
+            u = _row_to_dict(cur.fetchone()); db.close()
 
-            # Students → check if registered, go to card or self-register
-            if u["role"] == "student":
-                sid = u.get("student_id") or ""
-                if sid:
-                    db2  = get_db(); cur2 = db2.cursor()
-                    cur2.execute(f"SELECT student_id FROM students WHERE student_id={ph()}", (sid,))
-                    exists = cur2.fetchone(); db2.close()
-                    if exists:
-                        return redirect(url_for("student_card", student_id=sid))
-                # Not registered yet → self-registration page
-                return redirect(url_for("student_self_register"))
-            return redirect(url_for("dashboard"))
+            if not u:
+                brute_protector.record_failure(client_ip)
+                error = "البريد الإلكتروني أو الرقم الجامعي غير مسجل"
+            elif not u.get("is_active"):
+                error = "الحساب موقوف. تواصل مع مدير النظام"
+            elif not u.get("email_verified"):
+                error = "يرجى تفعيل بريدك الإلكتروني أولاً"
+                unverified_email = u.get("email") or identifier
+            elif not check_pw(pw, u.get("password_hash")):
+                brute_protector.record_failure(client_ip)
+                error = "كلمة المرور غير صحيحة"
+            else:
+                brute_protector.record_success(client_ip)
+                csrf_token_val = session.get("csrf_token")
+                session.clear()
+                if csrf_token_val:
+                    session["csrf_token"] = csrf_token_val
+                session["user_id"]    = u["id"]
+                session["user_name"]  = u["full_name"]
+                session["role"]       = u["role"]
+                session["email"]      = u["email"]
+                session["college"]    = u.get("college") or ""
+                session["student_id"] = u.get("student_id") or ""
+                log_action(u["id"], "LOGIN", ip=request.remote_addr)
+
+                # Students → check if registered, go to card or self-register
+                if u["role"] == "student":
+                    sid = u.get("student_id") or ""
+                    if sid:
+                        db2  = get_db(); cur2 = db2.cursor()
+                        cur2.execute(f"SELECT student_id FROM students WHERE student_id={ph()}", (sid,))
+                        exists = cur2.fetchone(); db2.close()
+                        if exists:
+                            return redirect(url_for("student_card", student_id=sid))
+                    # Not registered yet → self-registration page
+                    return redirect(url_for("student_self_register"))
+                return redirect(url_for("dashboard"))
 
     status_code = 401 if (error and request.method == "POST") else 200
     return render_template("login.html", error=error,

@@ -575,23 +575,48 @@ async function updateDupPhoto(){
 }
 
 // ── Submit ──
+const colEl = document.getElementById('college');
+colEl.addEventListener('change', function() {
+  colEl.style.borderColor = '';
+  colEl.style.boxShadow = '';
+});
+
 document.getElementById('reg-form').addEventListener('submit',async function(e){
   e.preventDefault();
   const btn=document.getElementById('sub-btn'),sp=document.getElementById('sub-spin'),bt=document.getElementById('sub-txt');
 
-  const col = document.getElementById('college').value;
+  const col = colEl.value;
   if (!col) {
-    toast('يرجى اختيار الكلية المقيد بها من القائمة', 'error');
+    colEl.style.borderColor = '#dc2626';
+    colEl.style.boxShadow = '0 0 0 3px rgba(220,38,38,0.15)';
+    colEl.focus();
+    toast('⚠️ يرجى اختيار الكلية المقيد بها من القائمة أولاً', 'error');
     return;
   }
 
   const imgF = document.getElementById('img-inp').files[0];
   if (!imgF) {
-    toast('يرجى التقاط أو رفع صورتك الشخصية للبطاقة', 'error');
+    toast('⚠️ يرجى التقاط أو رفع صورتك الشخصية للبطاقة الجامعية', 'error');
+    document.getElementById('upz').scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
 
-  btn.disabled=true;sp.style.display='block';bt.textContent='جارٍ تسجيل بياناتك ورفع الصورة…';
+  // File size validation (5MB max)
+  if (imgF.size > 5 * 1024 * 1024) {
+    toast('⚠️ حجم الصورة كبير جداً (' + (imgF.size / (1024*1024)).toFixed(1) + ' ميجابايت). الحد الأقصى المسموح 5 ميجابايت', 'error');
+    return;
+  }
+
+  // File type validation
+  const validExts = ['.jpg', '.jpeg', '.png'];
+  const fileName = (imgF.name || '').toLowerCase();
+  const hasValidExt = validExts.some(ext => fileName.endsWith(ext));
+  if (!hasValidExt) {
+    toast('⚠️ نوع الملف غير مدعوم. يُرجى رفع صورة بصيغة JPG أو PNG فقط', 'error');
+    return;
+  }
+
+  btn.disabled=true;sp.style.display='block';bt.textContent='جارٍ فحص الوجه ورفع الصورة…';
   try{
     const fd=new FormData(this);
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');

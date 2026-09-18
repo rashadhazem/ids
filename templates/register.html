@@ -104,7 +104,11 @@
           <label>الاسم الرباعي كاملاً (باللغة العربية فقط) <span class="req">*</span></label>
           <input type="text" name="full_name" id="full_name" required
                  placeholder="محمد أحمد علي حسن" autocomplete="off"
-                 pattern="^[\u0621-\u064A\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
+                 pattern="^[\u0621-\u064A\u064B-\u065F\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
+          <div id="name-parts-hint" style="font-size:.72rem;color:var(--muted);font-family:'Tajawal';margin-top:4px;display:flex;align-items:center;gap:6px">
+            <span id="name-counter-badge" style="padding:2px 8px;border-radius:12px;background:#f1f5f9;font-weight:600">0 من 4 مقاطع</span>
+            <span id="name-feedback-txt">يرجى كتابة الاسم رباعياً باللغة العربية</span>
+          </div>
         </div>
       </div>
       <div class="form-row">
@@ -459,6 +463,43 @@ uz.addEventListener('drop',e=>{
   document.getElementById('image').dispatchEvent(new Event('change'));
 });
 
+// ── FULL NAME LIVE COUNTER ──
+const fnInp = document.getElementById('full_name');
+if (fnInp) {
+  fnInp.addEventListener('input', function() {
+    const val = (this.value || '').trim();
+    const badge = document.getElementById('name-counter-badge');
+    const feedback = document.getElementById('name-feedback-txt');
+    if (!badge || !feedback) return;
+    if (!val) {
+      badge.textContent = '0 من 4 مقاطع';
+      badge.style.background = '#f1f5f9';
+      badge.style.color = 'var(--muted)';
+      feedback.textContent = 'يرجى كتابة الاسم رباعياً باللغة العربية';
+      return;
+    }
+    const arRegex = /^[\u0621-\u064A\u064B-\u065F\u0671\s]+$/;
+    if (!arRegex.test(val)) {
+      badge.textContent = 'حروف غير عربية';
+      badge.style.background = '#fee2e2';
+      badge.style.color = '#dc2626';
+      feedback.textContent = 'يُسمح بالحروف العربية فقط';
+      return;
+    }
+    const parts = val.split(/\s+/).filter(Boolean);
+    badge.textContent = `${parts.length} من 4 مقاطع`;
+    if (parts.length >= 4) {
+      badge.style.background = '#dcfce7';
+      badge.style.color = '#15803d';
+      feedback.textContent = '✓ الاسم رباعي ومكتمل';
+    } else {
+      badge.style.background = '#fef3c7';
+      badge.style.color = '#b45309';
+      feedback.textContent = `متبقي ${4 - parts.length} مقطع`;
+    }
+  });
+}
+
 // ── FORM SUBMIT ──
 let _dupStudentId = null;
 
@@ -469,28 +510,74 @@ document.getElementById('reg-form').addEventListener('submit', async function(e)
   const bt  = document.getElementById('btn-txt');
 
   const fn = (document.getElementById('full_name').value || '').trim();
-  const arRegex = /^[\u0621-\u064A\u0671\s]+$/;
+  const arRegex = /^[\u0621-\u064A\u064B-\u065F\u0671\s]+$/;
   if (!fn || !arRegex.test(fn)) {
     showToast('الاسم يجب أن يكون باللغة العربية فقط (بدون أرقام أو حروف إنجليزية)', 'error');
+    document.getElementById('full_name').focus();
     return;
   }
   const parts = fn.split(/\s+/).filter(Boolean);
   if (parts.length < 4) {
-    showToast('الاسم يجب أن يكون رباعياً على الأقل', 'error');
+    showToast('الاسم يجب أن يكون رباعياً على الأقل (تم إدخال ' + parts.length + ' أسماء)', 'error');
+    document.getElementById('full_name').focus();
     return;
   }
 
   const em = (document.getElementById('student_email')?.value || '').trim();
   if (!em) {
     showToast('يرجى إدخال البريد الإلكتروني للطالب (إلزامي)', 'error');
+    document.getElementById('student_email').focus();
     return;
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
     showToast('صيغة البريد الإلكتروني غير صحيحة', 'error');
+    document.getElementById('student_email').focus();
     return;
   }
 
-  btn.disabled = true; sp.style.display = 'block'; bt.textContent = 'جارٍ التسجيل…';
+  const yearEl = document.getElementById('year');
+  if (yearEl && !yearEl.value) {
+    showToast('يرجى اختيار سنة القيد للطالب', 'error');
+    yearEl.focus();
+    return;
+  }
+
+  const codeEl = document.getElementById('code');
+  if (codeEl) {
+    codeEl.value = toEng(codeEl.value.trim());
+    if (!codeEl.value) {
+      showToast('يرجى إدخال كود الطالب', 'error');
+      codeEl.focus();
+      return;
+    }
+    const reqLen = parseInt(document.getElementById('code_len')?.value || '6');
+    if (codeEl.value.length !== reqLen) {
+      showToast(`كود الطالب يجب أن يتكون من ${reqLen} أرقام`, 'error');
+      codeEl.focus();
+      return;
+    }
+  }
+
+  const colEl = document.getElementById('college');
+  if (colEl && !colEl.value) {
+    showToast('يرجى اختيار الكلية المقيد بها الطالب', 'error');
+    colEl.focus();
+    return;
+  }
+
+  const imgInp = document.getElementById('image');
+  const imgF = imgInp?.files?.[0];
+  if (!imgF && !originalBytes) {
+    showToast('يرجى رفع واختيار صورة شخصية للطالب في محرر الصور', 'error');
+    document.getElementById('upload-zone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (imgF && imgF.size > 5 * 1024 * 1024) {
+    showToast('حجم الصورة يتجاوز 5 ميجابايت. يُرجى اختيار صورة أصغر', 'error');
+    return;
+  }
+
+  btn.disabled = true; sp.style.display = 'block'; bt.textContent = 'جارٍ التحقق والتسجيل…';
 
   try {
     const codeField = document.getElementById('code');

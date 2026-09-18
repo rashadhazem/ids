@@ -109,28 +109,99 @@ input:focus{border-color:#1a3a6b;box-shadow:0 0 0 3px rgba(26,58,107,.08);backgr
     {% endif %}
     <div class="field">
       <label>الاسم الكامل (باللغة العربية فقط)</label>
-      <input type="text" name="full_name" required placeholder="محمد أحمد علي حسن" pattern="^[\u0621-\u064A\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
-      <p class="hint">يجب إدخال الاسم بالحروف العربية فقط</p>
+      <input type="text" id="full_name" name="full_name" required placeholder="محمد أحمد علي حسن" pattern="^[\u0621-\u064A\u064B-\u065F\u0671\s]+$" title="يرجى إدخال الاسم بالحروف العربية فقط">
+      <p id="name-hint" class="hint">يجب إدخال الاسم بالحروف العربية فقط (ثلاثي أو رباعي على الأقل)</p>
     </div>
     <div class="field">
       <label>البريد الإلكتروني للجامعة</label>
-      <input type="email" name="email" required placeholder="example@{{ domain }}">
-      <p class="hint">يجب أن ينتهي بـ @{{ domain }}</p>
+      <input type="email" id="email" name="email" required placeholder="example@{{ domain }}">
+      <p id="email-hint" class="hint">يجب أن ينتهي بـ @{{ domain }}</p>
     </div>
     <div class="field">
       <label>كلمة المرور</label>
-      <input type="password" name="password" required placeholder="8 أحرف على الأقل">
+      <input type="password" id="password" name="password" required placeholder="8 أحرف على الأقل" minlength="8">
+      <p id="pw-hint" class="hint">8 أحرف أو أرقام على الأقل</p>
     </div>
     <div class="field">
       <label>تأكيد كلمة المرور</label>
-      <input type="password" name="password2" required placeholder="أعد كتابة كلمة المرور">
+      <input type="password" id="password2" name="password2" required placeholder="أعد كتابة كلمة المرور">
+      <p id="pw2-hint" class="hint" style="display:none"></p>
     </div>
-    <button type="submit" class="btn">إنشاء الحساب</button>
+    <button type="submit" id="submit-btn" class="btn">إنشاء الحساب</button>
     <div class="links">
       <a href="{{ url_for('login') }}">لديك حساب بالفعل؟ سجّل الدخول</a>
     </div>
-
   </form>
 </div>
+
+<script>
+const fnInput = document.getElementById('full_name');
+const emailInput = document.getElementById('email');
+const pw1Input = document.getElementById('password');
+const pw2Input = document.getElementById('password2');
+const pw2Hint = document.getElementById('pw2-hint');
+const subBtn = document.getElementById('submit-btn');
+
+function checkPwMatch() {
+  if (!pw2Input.value) {
+    pw2Hint.style.display = 'none';
+    pw2Input.style.borderColor = '';
+    return;
+  }
+  pw2Hint.style.display = 'block';
+  if (pw1Input.value === pw2Input.value) {
+    pw2Hint.textContent = '✓ كلمتا المرور متطابقتان';
+    pw2Hint.style.color = '#15803d';
+    pw2Input.style.borderColor = '#16a34a';
+  } else {
+    pw2Hint.textContent = '⚠ كلمتا المرور غير متطابقتين';
+    pw2Hint.style.color = '#dc2626';
+    pw2Input.style.borderColor = '#dc2626';
+  }
+}
+
+pw1Input.addEventListener('input', checkPwMatch);
+pw2Input.addEventListener('input', checkPwMatch);
+
+document.querySelector('form').addEventListener('submit', function(e) {
+  const name = (fnInput.value || '').trim();
+  const arRegex = /^[\u0621-\u064A\u064B-\u065F\u0671\s]+$/;
+  if (!name || !arRegex.test(name)) {
+    e.preventDefault();
+    alert('الاسم يجب أن يكون باللغة العربية فقط');
+    fnInput.focus();
+    return false;
+  }
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) {
+    e.preventDefault();
+    alert('يرجى إدخال الاسم كاملاً (الاسم الثنائي أو الثلاثي على الأقل)');
+    fnInput.focus();
+    return false;
+  }
+  const em = (emailInput.value || '').trim().toLowerCase();
+  if (!em.endsWith('@' + '{{ domain }}'.toLowerCase()) && !em.endsWith('@bua.edu.eg')) {
+    e.preventDefault();
+    alert('يجب استخدام بريد الجامعة الرسمي (@{{ domain }})');
+    emailInput.focus();
+    return false;
+  }
+  if (pw1Input.value.length < 8) {
+    e.preventDefault();
+    alert('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+    pw1Input.focus();
+    return false;
+  }
+  if (pw1Input.value !== pw2Input.value) {
+    e.preventDefault();
+    alert('كلمتا المرور غير متطابقتين');
+    pw2Input.focus();
+    return false;
+  }
+
+  subBtn.disabled = true;
+  subBtn.textContent = 'جارٍ إنشاء الحساب...';
+});
+</script>
 </body>
 </html>
