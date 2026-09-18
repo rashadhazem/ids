@@ -101,12 +101,14 @@ def get_csrf_token_endpoint():
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
     app.logger.warning(f"[CSRF Error] {e.description} on {request.method} {request.path}")
-    if (request.is_json or 
+    is_ajax = (
+        request.is_json or 
         request.headers.get("X-Requested-With") == "XMLHttpRequest" or 
         "application/json" in request.headers.get("Accept", "") or
-        request.headers.get("X-CSRFToken") or
-        request.path in ["/register", "/student/register", "/auth/change-password"] or
-        request.path.startswith(("/admin/", "/student/", "/api/", "/auth/"))):
+        bool(request.headers.get("X-CSRFToken")) or
+        request.path.startswith("/api/")
+    )
+    if is_ajax:
         return jsonify(
             success=False,
             message="انتهت صلاحية رمز الأمان أو جلسة العمل. يرجى تحديث الصفحة وإعادة المحاولة.",
@@ -114,7 +116,7 @@ def handle_csrf_error(e):
         ), 400
     return render_template("auth_message.html",
                            title="انتهت صلاحية الجلسة",
-                           message="انتهت صلاحية رمز الأمان الخاص بك. يرجى تحديث الصفحة والمحاولة مجدداً."), 400
+                           message="انتهت صلاحية رمز الأمان الخاص بك أو تم تحديث الجلسة. يرجى إعادة تحميل الصفحة والمحاولة مجدداً."), 400
 
 mail    = Mail(app)
 jwt     = JWTManager(app)
@@ -512,6 +514,10 @@ def auth_verify(token):
 @limiter.limit(lambda: os.getenv("LIMIT_AUTH_RESEND", "15 per hour"))
 def auth_resend_verification():
     """Resend email verification activation link."""
+    from flask_wtf.csrf import generate_csrf
+    generate_csrf()
+    session.modified = True
+
     msg = None
     msg_type = "info"
     email_val = request.args.get("email", "").strip().lower()

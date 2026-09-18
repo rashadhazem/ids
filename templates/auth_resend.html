@@ -243,10 +243,13 @@
 
             <div class="field">
                 <label>البريد الإلكتروني للجامعة</label>
-                <input type="email" name="email" value="{{ email_val or '' }}" required autofocus placeholder="example@{{ domain }}" autocomplete="email">
+                <input type="email" id="email" name="email" value="{{ email_val or '' }}" required autofocus placeholder="example@{{ domain }}" autocomplete="email">
+                <div id="email-err" style="display:none;color:#dc2626;font-size:0.75rem;margin-top:5px;font-weight:600"></div>
             </div>
 
-            <button type="submit" class="btn">إرسال رابط التفعيل</button>
+            <button type="submit" id="btn-submit" class="btn">
+                <span id="btn-txt">إرسال رابط التفعيل</span>
+            </button>
 
             <div class="links">
                 <a href="{{ url_for('login') }}">العودة لتسجيل الدخول</a>
@@ -260,5 +263,33 @@
         <p>© 2026 جامعة بدر بأسيوط – جميع الحقوق محفوظة</p>
     </footer>
 </div>
+
+<script>
+const resendForm = document.querySelector('form');
+const emailInp = document.getElementById('email');
+const emailErr = document.getElementById('email-err');
+const btnSub = document.getElementById('btn-submit');
+const btnTxt = document.getElementById('btn-txt');
+
+emailInp.addEventListener('input', () => {
+    emailInp.style.borderColor = '';
+    emailErr.style.display = 'none';
+});
+
+resendForm.addEventListener('submit', function(e) {
+    const em = (emailInp.value || '').trim();
+    if (!em) {
+        e.preventDefault();
+        emailInp.style.borderColor = '#dc2626';
+        emailErr.textContent = 'يرجى إدخال البريد الإلكتروني';
+        emailErr.style.display = 'block';
+        emailInp.focus();
+        return false;
+    }
+    btnSub.disabled = true;
+    btnSub.style.opacity = '0.7';
+    btnTxt.textContent = 'جارٍ إرسال الرابط...';
+});
+</script>
 </body>
 </html>

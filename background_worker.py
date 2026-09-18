@@ -308,14 +308,18 @@ def wait_for_job(job_id: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
 
 # ── Asynchronous Email Task ────────────────────────────────────────────────
 
+_SMTP_QUOTA_BLOCKED_UNTIL = 0
+
 def submit_async_email(flask_app, to: str, subject: str, html: str) -> str:
     """Submit an email to be sent asynchronously in the background."""
     job_id = str(uuid.uuid4())
 
     def _send_task():
+        global _SMTP_QUOTA_BLOCKED_UNTIL
         with flask_app.app_context():
             from flask_mail import Message
             from app import mail
+            import re
 
             if flask_app.config.get("TESTING"):
                 logger.info(f"📧 [TESTING] Simulated async email to {to}: {subject}")
@@ -325,16 +329,37 @@ def submit_async_email(flask_app, to: str, subject: str, html: str) -> str:
                 logger.warning(f"MAIL not configured – skipping email to {to}")
                 return
 
+            now = time.time()
+            if now < _SMTP_QUOTA_BLOCKED_UNTIL:
+                # Quota is currently known to be exhausted on SMTP server
+                logger.warning(f"⚠️ [SMTP Quota Cooldown] Gmail daily quota currently reached. Direct delivery paused.")
+                links = re.findall(r'href=[\'"](http[^\'"]+)[\'"]', html)
+                if links:
+                    logger.info(f"🔗 [Action Link for {to}]: {links[0]}")
+                return
 
             for attempt in range(1, 3):
                 try:
                     msg = Message(subject, recipients=[to], html=html)
                     mail.send(msg)
-                    logger.info(f"Async email sent successfully to {to}")
+                    logger.info(f"📧 Async email sent successfully to {to}")
                     return
                 except Exception as e:
-                    logger.error(f"Attempt {attempt} failed sending email to {to}: {e}")
-                    time.sleep(1.0)
+                    ctx = getattr(e, '__context__', None)
+                    err_str = f"{e} {ctx}" if ctx else str(e)
+                    is_quota = ("550" in err_str and "limit" in err_str.lower()) or "sending limit exceeded" in err_str.lower()
+                    
+                    if is_quota or "Connection unexpectedly closed" in str(e):
+                        # Gmail abruptly drops socket on daily limit exceeded
+                        _SMTP_QUOTA_BLOCKED_UNTIL = time.time() + 1800  # 30-min cooldown
+                        logger.warning(f"⚠️ [SMTP Quota Alert] Google SMTP daily user sending limit reached (550). Recipient: {to}")
+                        links = re.findall(r'href=[\'"](http[^\'"]+)[\'"]', html)
+                        if links:
+                            logger.info(f"🔗 [Action Link for {to}]: {links[0]}")
+                        return
+                    else:
+                        logger.error(f"Attempt {attempt} failed sending email to {to}: {e}")
+                        time.sleep(1.0)
 
     _general_pool.submit(_send_task)
     return job_id
