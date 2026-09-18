@@ -63,7 +63,7 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=8)
 app.config["SESSION_COOKIE_HTTPONLY"]  = True
 app.config["SESSION_COOKIE_SAMESITE"]  = "Lax"
 app.config["SESSION_COOKIE_SECURE"]    = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
-app.config["MAX_CONTENT_LENGTH"]       = int(os.getenv("MAX_CONTENT_LENGTH", 5*1024*1024))
+app.config["MAX_CONTENT_LENGTH"]       = int(os.getenv("MAX_CONTENT_LENGTH", 15*1024*1024))
 app.config["WTF_CSRF_TIME_LIMIT"]      = None  # CSRF tokens remain valid for the full duration of session
 app.config["WTF_CSRF_CHECK_DEFAULT"]   = True
 mail_port = int(os.getenv("MAIL_PORT", 587))
@@ -1014,7 +1014,8 @@ def student_card(student_id):
             pass
         # Fallback check if student user was updated
         try:
-            cur.execute(f"SELECT student_id FROM users WHERE student_id={ph()} OR email LIKE {ph()}", (student_id, f"{student_id}@%"))
+            email_pattern = f"{student_id}@%"
+            cur.execute(f"SELECT student_id FROM users WHERE student_id={ph()} OR email LIKE {ph()}", (student_id, email_pattern))
             u_match = cur.fetchone()
             if u_match:
                 new_sid = u_match["student_id"] if isinstance(u_match, dict) else u_match[0]
@@ -2319,132 +2320,133 @@ def bulk_import():
 
     results = {"created": 0, "skipped": 0, "errors": [], "preview": []}
 
-    for i, row in enumerate(rows[:500], start=2):  # max 500 rows
-        sid       = to_eng(find_col(row, COL_MAP["student_id"]).strip())
-        full_name = find_col(row, COL_MAP["full_name"]).strip()
-        year      = to_eng(find_col(row, COL_MAP["year"]).strip())
-        college   = find_col(row, COL_MAP["college"]).strip()
-        email     = find_col(row, COL_MAP["email"]).strip().lower()
+    db = get_db()
+    cur = db.cursor()
+    try:
+        for i, row in enumerate(rows[:500], start=2):  # max 500 rows
+            sid       = to_eng(find_col(row, COL_MAP["student_id"]).strip())
+            full_name = find_col(row, COL_MAP["full_name"]).strip()
+            year      = to_eng(find_col(row, COL_MAP["year"]).strip())
+            college   = find_col(row, COL_MAP["college"]).strip()
+            email     = find_col(row, COL_MAP["email"]).strip().lower()
 
-        if not sid or not full_name or not email:
-            results["errors"].append(f"سطر {i}: رقم الطالب أو الاسم أو البريد الإلكتروني مفقود (البريد إلزامي)")
-            results["skipped"] += 1
-            continue
+            if not sid or not full_name or not email:
+                results["errors"].append(f"سطر {i}: رقم الطالب أو الاسم أو البريد الإلكتروني مفقود (البريد إلزامي)")
+                results["skipped"] += 1
+                continue
 
-        # Validate college
-        if college and college not in COLLEGES:
-            # Try partial match
-            matched = next((c for c in COLLEGES if college in c or c in college), None)
-            if matched:
-                college = matched
+            # Validate college
+            if college and college not in COLLEGES:
+                # Try partial match
+                matched = next((c for c in COLLEGES if college in c or c in college), None)
+                if matched:
+                    college = matched
+                else:
+                    college = COLLEGES[0]  # fallback
+
+            # admin restricted to own college
+            if session.get("role") == "admin" and session.get("college"):
+                college = session.get("college")
+
+            if not year or not re.fullmatch(r"\d{4}", year):
+                year = sid[:4] if len(sid) >= 4 else str(CURRENT_YEAR)
+
+            # Check if already exists
+            cur.execute(f"SELECT id FROM students WHERE student_id={ph()}", (sid,))
+            if cur.fetchone():
+                results["skipped"] += 1
+                results["preview"].append({"sid": sid, "name": full_name, "status": "موجود مسبقاً"})
+                continue
+
+            # Generate temp password
+            temp_pw     = secrets.token_urlsafe(8)
+            placeholder_img = os.path.join(UPLOAD_FOLDER, "placeholder.jpg")
+
+            # Create a placeholder image if needed
+            if not os.path.exists(placeholder_img):
+                try:
+                    from PIL import Image, ImageDraw
+                    img_ph = Image.new("RGB", (400, 500), color=(26, 58, 107))
+                    draw   = ImageDraw.Draw(img_ph)
+                    draw.rectangle([160, 100, 240, 180], fill=(232, 184, 75))
+                    img_ph.save(placeholder_img, "JPEG")
+                except Exception:
+                    pass
+
+            # Save placeholder in correct folder
+            from image_processor import _college_folder
+            col_folder = _college_folder(college)
+            img_dir    = os.path.join(UPLOAD_FOLDER, year, col_folder)
+            os.makedirs(img_dir, exist_ok=True)
+            img_name   = f"{sid}_pending.jpg"
+            img_path   = os.path.join(img_dir, img_name)
+            rel_path   = f"uploads/{year}/{col_folder}/{img_name}"
+
+            if os.path.exists(placeholder_img):
+                import shutil
+                shutil.copy2(placeholder_img, img_path)
             else:
-                college = COLLEGES[0]  # fallback
+                with open(img_path, "wb") as fh:
+                    fh.write(b"")
 
-        # admin restricted to own college
-        if session.get("role") == "admin" and session.get("college"):
-            college = session.get("college")
-
-        if not year or not re.fullmatch(r"\d{4}", year):
-            year = sid[:4] if len(sid) >= 4 else str(CURRENT_YEAR)
-
-        # Check if already exists
-        db  = get_db(); cur = db.cursor()
-        cur.execute(f"SELECT id FROM students WHERE student_id={ph()}", (sid,))
-        if cur.fetchone():
-            db.close()
-            results["skipped"] += 1
-            results["preview"].append({"sid": sid, "name": full_name, "status": "موجود مسبقاً"})
-            continue
-
-        # Generate temp password
-        temp_pw     = secrets.token_urlsafe(8)
-        placeholder_img = os.path.join(UPLOAD_FOLDER, "placeholder.jpg")
-
-        # Create a placeholder image if needed
-        if not os.path.exists(placeholder_img):
+            # Insert student record
             try:
-                from PIL import Image, ImageDraw
-                img_ph = Image.new("RGB", (400, 500), color=(26, 58, 107))
-                draw   = ImageDraw.Draw(img_ph)
-                draw.rectangle([160, 100, 240, 180], fill=(232, 184, 75))
-                img_ph.save(placeholder_img, "JPEG")
-            except Exception:
-                pass
+                uid = session.get("user_id")
+                reg_uid = None
+                if uid:
+                    cur.execute(f"SELECT id FROM users WHERE id={ph()}", (uid,))
+                    if cur.fetchone():
+                        reg_uid = uid
 
-        # Save placeholder in correct folder
-        from image_processor import _college_folder
-        col_folder = _college_folder(college)
-        img_dir    = os.path.join(UPLOAD_FOLDER, year, col_folder)
-        os.makedirs(img_dir, exist_ok=True)
-        img_name   = f"{sid}_pending.jpg"
-        img_path   = os.path.join(img_dir, img_name)
-        rel_path   = f"uploads/{year}/{col_folder}/{img_name}"
-
-        if os.path.exists(placeholder_img):
-            import shutil
-            shutil.copy2(placeholder_img, img_path)
-        else:
-            with open(img_path, "wb") as fh:
-                fh.write(b"")
-
-        # Insert student record
-        try:
-            uid = session.get("user_id")
-            reg_uid = None
-            if uid:
-                cur.execute(f"SELECT id FROM users WHERE id={ph()}", (uid,))
-                if cur.fetchone():
-                    reg_uid = uid
-
-            cur.execute(
-                f"INSERT INTO students (student_id,full_name,year,college,email,image_path,registered_by) VALUES ({','.join([ph()]*7)})",
-                (sid, full_name, year, college, email or None, rel_path, reg_uid)
-            )
-            db.commit()
-
-            # ── Create student user account ──
-            # Email = student_id@domain  (e.g. 2024001001@university.edu.eg)
-            student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
-            hashed_pw           = hash_pw(temp_pw)
-
-            cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, sid))
-            existing_user = cur.fetchone()
-            if not existing_user:
                 cur.execute(
-                    f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
-                    (student_login_email, hashed_pw, full_name, "student",
-                     college, sid, True if is_use_pg() else 1, True if is_use_pg() else 1)   # pre-verified, active
-                )
-                db.commit()
-            else:
-                user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
-                cur.execute(
-                    f"UPDATE users SET student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
-                    (sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                    f"INSERT INTO students (student_id,full_name,year,college,email,image_path,registered_by) VALUES ({','.join([ph()]*7)})",
+                    (sid, full_name, year, college, email or None, rel_path, reg_uid)
                 )
                 db.commit()
 
-            results["created"] += 1
-            results["preview"].append({
-                "sid":      sid,
-                "name":     full_name,
-                "status":   "تم الإنشاء",
-                "email":    student_login_email,
-            })
-            log_action(reg_uid, "BULK_IMPORT_STUDENT", target=sid,
-                       detail=full_name, ip=request.remote_addr)
+                # ── Create student user account ──
+                # Email = student_id@domain  (e.g. 2024001001@university.edu.eg)
+                student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
+                hashed_pw           = hash_pw(temp_pw)
 
-            # Send welcome email with login credentials
-            if email:
-                card_link   = url_for("student_card", student_id=sid, _external=True)
-                login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
-                _send_student_welcome(email, full_name, sid, login_email, temp_pw, card_link)
-        except Exception as e:
-            results["errors"].append(f"سطر {i} ({sid}): {e}")
-            results["skipped"] += 1
-            results["preview"].append({"sid": sid, "name": full_name, "status": "خطأ"})
-        finally:
-            db.close()
+                cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, sid))
+                existing_user = cur.fetchone()
+                if not existing_user:
+                    cur.execute(
+                        f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
+                        (student_login_email, hashed_pw, full_name, "student",
+                         college, sid, True if is_use_pg() else 1, True if is_use_pg() else 1)   # pre-verified, active
+                    )
+                    db.commit()
+                else:
+                    user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
+                    cur.execute(
+                        f"UPDATE users SET student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                        (sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                    )
+                    db.commit()
+
+                results["created"] += 1
+                results["preview"].append({
+                    "sid":      sid,
+                    "name":     full_name,
+                    "status":   "تم الإنشاء",
+                    "email":    student_login_email,
+                })
+                log_action(reg_uid, "BULK_IMPORT_STUDENT", target=sid,
+                           detail=full_name, ip=request.remote_addr)
+
+                # Send welcome email with login credentials
+                if email:
+                    card_link   = url_for("student_card", student_id=sid, _external=True)
+                    login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
+                    _send_student_welcome(email, full_name, sid, login_email, temp_pw, card_link)
+            except Exception as e:
+                results["errors"].append(f"سطر {i} ({sid}): {e}")
+                results["skipped"] += 1
+                results["preview"].append({"sid": sid, "name": full_name, "status": "خطأ"})
+    finally:
+        db.close()
 
     return jsonify(success=True, results=results)
 

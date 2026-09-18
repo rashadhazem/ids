@@ -1,6 +1,6 @@
 """
 gunicorn_config.py – Gunicorn High-Concurrency Production Configuration for BUA Portal
-Async Gevent Coroutines / 500+ simultaneous requests & 400 concurrent uploads.
+Threaded (gthread) Workers / 500+ simultaneous requests & native OS threads for C-extensions.
 """
 import multiprocessing
 import os

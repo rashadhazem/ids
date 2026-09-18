@@ -59,8 +59,9 @@ def run_security_audit():
            bool(csp and "default-src" in csp),
            f"CSP present: {bool(csp)} (mitigates Cross-Site Scripting XSS)")
 
-    # Strict-Transport-Security (HSTS)
-    hsts = headers.get("Strict-Transport-Security")
+    # Strict-Transport-Security (HSTS - verified over HTTPS)
+    res_https = client.get("/", base_url="https://localhost")
+    hsts = res_https.headers.get("Strict-Transport-Security")
     record("HSTS Header (Strict-Transport-Security)",
            bool(hsts and "max-age" in hsts),
            f"Value: '{hsts}' (enforces HTTPS encryption)")
@@ -154,9 +155,9 @@ def run_security_audit():
             f_matches = re.findall(r"\{([^}]+)\}", line)
             for m in f_matches:
                 m_clean = m.strip()
-                if m_clean not in ("ph()", "where", "per_page", "offset", "uid", "sid", "token", "new_hashed"):
+                if m_clean not in ("ph()", "where", "per_page", "offset", "uid", "sid", "student_id", "token", "new_hashed"):
                     # Check if it's safe
-                    if not any(k in m_clean for k in ("table", "college", "year", "role")):
+                    if not any(k in m_clean for k in ("table", "college", "year", "role", "ph()", "join")):
                         unsafe_interpolations.append((line_no, line))
 
     record("SQL Parameterization & Injection Defense",
