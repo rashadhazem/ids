@@ -453,7 +453,7 @@ def auth_register():
         full_name = request.form.get("full_name","").strip()
 
         if not validate_university_email(email):
-            error = f"يجب استخدام إيمبيل الجامعة (@{UNIVERSITY_DOMAIN})"
+            error = f"يجب استخدام بريد الجامعة الإلكتروني (@{UNIVERSITY_DOMAIN})"
         elif not full_name:
             error = "يرجى إدخال الاسم"
         elif not re.fullmatch(r"^[\u0621-\u064A\u0671\s]+$", full_name):
@@ -1634,7 +1634,7 @@ def admin_export():
     th = Side(style="thin", color="CCCCCC")
     bd = Border(left=th,right=th,top=th,bottom=th)
     af = PatternFill("solid", fgColor="EBF2FA")
-    headers = ["رقم الطالب","الاسم الكامل","السنة","الكلية","الإيمبيل","تاريخ التسجيل"]
+    headers = ["رقم الطالب","الاسم الكامل","السنة","الكلية","البريد الإلكتروني","تاريخ التسجيل"]
     widths  = [18,42,10,36,32,22]
     for ci,(h,w) in enumerate(zip(headers,widths),1):
         cell = ws.cell(1,ci,h); cell.font=hf; cell.fill=hb
