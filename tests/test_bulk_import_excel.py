@@ -270,5 +270,80 @@ class TestBulkImportExcel(unittest.TestCase):
             db.commit()
             db.close()
 
+    def test_06_import_with_email_named_al_email_and_al_bareed_al_elektrony(self):
+        """
+        Verify Excel files with email column headers named:
+        1. 'الايميل'
+        2. 'البريد الالكترونى'
+        Both should be detected correctly and personal email saved in students table.
+        """
+        import openpyxl
+
+        # Test Sheet 1: Header is 'الايميل'
+        wb1 = openpyxl.Workbook()
+        ws1 = wb1.active
+        ws1.append(["رقم الطالب", "اسم الطالب", "الكلية", "الايميل"])
+        ws1.append(["2026303001", "كريم حسام الدين عبد الله", "كلية طب الأسنان", "karim@example.com"])
+        buf1 = io.BytesIO()
+        wb1.save(buf1)
+        buf1.seek(0)
+
+        # Test Sheet 2: Header is 'البريد الالكترونى'
+        wb2 = openpyxl.Workbook()
+        ws2 = wb2.active
+        ws2.append(["كود الطالب", "الاسم", "الكلية", "البريد الالكترونى"])
+        ws2.append(["2026303002", "منة الله طارق السيد", "كلية التمريض", "menna@example.com"])
+        buf2 = io.BytesIO()
+        wb2.save(buf2)
+        buf2.seek(0)
+
+        sids = ["2026303001", "2026303002"]
+        db = get_db()
+        cur = db.cursor()
+        for sid in sids:
+            cur.execute(f"DELETE FROM students WHERE student_id={ph()}", (sid,))
+            cur.execute(f"DELETE FROM users WHERE student_id={ph()}", (sid,))
+        db.commit()
+        db.close()
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["user_id"] = 1
+                sess["role"] = "superadmin"
+                sess["user_name"] = "مدير النظام"
+
+            # 1. Upload sheet with 'الايميل'
+            res1 = client.post("/admin/bulk-import", data={"file": (buf1, "sheet1.xlsx")}, content_type="multipart/form-data")
+            self.assertEqual(res1.status_code, 200)
+            self.assertTrue(res1.get_json().get("success"))
+            self.assertEqual(res1.get_json().get("results", {}).get("created"), 1)
+
+            # 2. Upload sheet with 'البريد الالكترونى'
+            res2 = client.post("/admin/bulk-import", data={"file": (buf2, "sheet2.xlsx")}, content_type="multipart/form-data")
+            self.assertEqual(res2.status_code, 200)
+            self.assertTrue(res2.get_json().get("success"))
+            self.assertEqual(res2.get_json().get("results", {}).get("created"), 1)
+
+        # Verify emails were correctly extracted and saved
+        db = get_db()
+        cur = db.cursor()
+
+        cur.execute(f"SELECT email FROM students WHERE student_id={ph()}", ("2026303001",))
+        s1 = cur.fetchone()
+        s1_dict = dict(s1) if hasattr(s1, 'keys') else {"email": s1[0]}
+        self.assertEqual(s1_dict["email"], "karim@example.com")
+
+        cur.execute(f"SELECT email FROM students WHERE student_id={ph()}", ("2026303002",))
+        s2 = cur.fetchone()
+        s2_dict = dict(s2) if hasattr(s2, 'keys') else {"email": s2[0]}
+        self.assertEqual(s2_dict["email"], "menna@example.com")
+
+        # Clean up
+        for sid in sids:
+            cur.execute(f"DELETE FROM students WHERE student_id={ph()}", (sid,))
+            cur.execute(f"DELETE FROM users WHERE student_id={ph()}", (sid,))
+        db.commit()
+        db.close()
+
 if __name__ == "__main__":
     unittest.main()

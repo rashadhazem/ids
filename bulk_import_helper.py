@@ -43,11 +43,30 @@ COL_MAP = {
         "القسم", "التخصص", "البرنامج", "department", "dept", "program"
     ],
     "email": [
-        "email", "الايميل", "البريد", "البريد_الإلكتروني", "البريد الإلكتروني",
-        "البريد_الالكتروني", "البريد الالكتروني", "ايميل",
-        "البريد الجامعي", "بريد الطالب", "mail", "e-mail", "email address"
+        "الايميل", "الإيميل", "البريد الالكتروني", "البريد الالكترونى",
+        "البريد الإلكتروني", "البريد الإلكترونى", "البريد", "ايميل", "إيميل",
+        "email", "e-mail", "mail", "email address",
+        "بريد الطالب", "ايميل الطالب", "إيميل الطالب", "البريد الجامعي", "الايميل الجامعي"
     ],
 }
+
+
+def normalize_header(s: Any) -> str:
+    """Normalize Arabic and English header strings for resilient matching."""
+    if not s:
+        return ""
+    s = str(s).strip().lower().replace("_", " ")
+    # Unify Alef forms: إ, أ, آ -> ا
+    s = re.sub(r"[إأآا]", "ا", s)
+    # Unify Ya / Alef Maksura: ى -> ي
+    s = re.sub(r"[ىي]", "ي", s)
+    # Unify Ta Marbuta / Ha: ة -> ه
+    s = re.sub(r"ة", "ه", s)
+    # Remove Tashkeel (diacritics)
+    s = re.sub(r"[\u064B-\u065F\u0670]", "", s)
+    # Collapse multiple spaces
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
 
 
 def clean_excel_val(v: Any) -> str:
@@ -76,18 +95,21 @@ def clean_excel_val(v: Any) -> str:
 
 def find_col(row_dict: Dict[str, Any], aliases: List[str]) -> str:
     """Find column value in row dictionary matching any of the given aliases."""
+    # 1. Direct exact key match
     for a in aliases:
         if a in row_dict:
             val = clean_excel_val(row_dict[a])
             if val:
                 return val
 
-    # Case-insensitive / normalized substring match
+    # 2. Normalized header match (handles 'البريد الالكترونى' vs 'الايميل' vs 'البريد الالكتروني' etc.)
+    norm_aliases = [normalize_header(a) for a in aliases]
     for k, v in row_dict.items():
-        k_clean = str(k).strip().lower().replace("_", " ")
-        for a in aliases:
-            a_clean = a.strip().lower().replace("_", " ")
-            if a_clean == k_clean or a_clean in k_clean or k_clean in a_clean:
+        norm_k = normalize_header(k)
+        if not norm_k:
+            continue
+        for a_norm in norm_aliases:
+            if a_norm == norm_k or a_norm in norm_k or norm_k in a_norm:
                 val = clean_excel_val(v)
                 if val:
                     return val
@@ -141,11 +163,11 @@ def parse_uploaded_file(raw_bytes: bytes, filename: str) -> List[Dict[str, str]]
     if not raw_rows:
         return []
 
-    # Build set of all known header keywords
+    # Build set of all known header keywords (normalized)
     all_keywords = set()
     for aliases in COL_MAP.values():
         for a in aliases:
-            all_keywords.add(a.lower().replace("_", " "))
+            all_keywords.add(normalize_header(a))
 
     # Detect header row among the first 10 rows
     best_header_idx = 0
@@ -154,11 +176,11 @@ def parse_uploaded_file(raw_bytes: bytes, filename: str) -> List[Dict[str, str]]
     for idx, r in enumerate(raw_rows[:10]):
         matches = 0
         for cell in r:
-            c_str = str(cell).strip().lower().replace("_", " ")
-            if not c_str:
+            norm_cell = normalize_header(cell)
+            if not norm_cell:
                 continue
             for kw in all_keywords:
-                if kw == c_str or kw in c_str:
+                if kw == norm_cell or kw in norm_cell or norm_cell in kw:
                     matches += 1
                     break
         if matches > max_matches:
