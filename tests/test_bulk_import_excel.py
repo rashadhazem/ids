@@ -202,5 +202,73 @@ class TestBulkImportExcel(unittest.TestCase):
                     break
             self.assertTrue(completed, "Async bulk import job should complete within timeout")
 
+    def test_05_import_with_title_banner_and_no_email_and_floats(self):
+        """
+        Verify Excel file with:
+        - Row 1: University title banner
+        - Row 2: Headers (using 'كود الطالب', 'اسم الطالب', 'الفرقة الدراسية', 'الكلية')
+        - Missing email column completely
+        - Float student ID (2026202001.0) and float year (2026.0)
+        - Trailing blank rows
+        """
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["جامعة بدر بأسيوط - كشف أسماء الطلاب المقيدين"])
+        ws.append(["كود الطالب", "اسم الطالب", "الفرقة الدراسية", "الكلية"])
+        ws.append([2026202001.0, "حسام مصطفى كمال الدين", 2026.0, "ذكاء اصطناعي"])
+        ws.append([2026202002, "ياسمين عادل إبراهيم مرسي", "2026", "كلية الصيدلة فارما D"])
+        ws.append([None, None, None, None])
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        sids = ["2026202001", "2026202002"]
+        db = get_db()
+        cur = db.cursor()
+        for sid in sids:
+            cur.execute(f"DELETE FROM students WHERE student_id={ph()}", (sid,))
+            cur.execute(f"DELETE FROM users WHERE student_id={ph()}", (sid,))
+        db.commit()
+        db.close()
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["user_id"] = 1
+                sess["role"] = "superadmin"
+                sess["user_name"] = "مدير النظام"
+
+            data = {"file": (buf, "real_world_test.xlsx")}
+            res = client.post("/admin/bulk-import", data=data, content_type="multipart/form-data")
+
+            self.assertEqual(res.status_code, 200)
+            res_data = res.get_json()
+            self.assertTrue(res_data.get("success"))
+            results = res_data.get("results", {})
+            self.assertEqual(results.get("created"), 2)
+            self.assertEqual(len(results.get("errors")), 0)
+
+            # Verify in DB
+            db = get_db()
+            cur = db.cursor()
+            for sid in sids:
+                cur.execute(f"SELECT * FROM students WHERE student_id={ph()}", (sid,))
+                s_row = cur.fetchone()
+                self.assertIsNotNone(s_row)
+
+                cur.execute(f"SELECT * FROM users WHERE student_id={ph()}", (sid,))
+                u_row = cur.fetchone()
+                self.assertIsNotNone(u_row)
+                u_dict = dict(u_row) if hasattr(u_row, 'keys') else dict(zip([d[0] for d in cur.description], u_row))
+                self.assertTrue(u_dict["email"].startswith(sid))
+                self.assertEqual(u_dict["role"], "student")
+
+                # Clean up
+                cur.execute(f"DELETE FROM students WHERE student_id={ph()}", (sid,))
+                cur.execute(f"DELETE FROM users WHERE student_id={ph()}", (sid,))
+            db.commit()
+            db.close()
+
 if __name__ == "__main__":
     unittest.main()

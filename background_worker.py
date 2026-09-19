@@ -415,7 +415,7 @@ def submit_bulk_import_job(flask_app, rows: list, user_id: int, user_role: str, 
         "status": JobStatus.PENDING,
         "progress": 0,
         "target_id": f"bulk_{len(rows)}",
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now().isoformat(),
         "result": None,
         "error": None
     }
@@ -434,149 +434,130 @@ def submit_bulk_import_job(flask_app, rows: list, user_id: int, user_role: str, 
             with flask_app.app_context():
                 from app import (
                     COLLEGES, UNIVERSITY_DOMAIN, CURRENT_YEAR, UPLOAD_FOLDER,
-                    to_eng, hash_pw, _send_student_welcome
+                    hash_pw, _send_student_welcome
                 )
+                from bulk_import_helper import (
+                    find_col, COL_MAP, to_eng,
+                    match_college_name, extract_academic_year
+                )
+                from image_processor import _college_folder
 
+                results = {"created": 0, "skipped": 0, "errors": [], "preview": []}
+                total = len(rows)
 
+                placeholder_img = os.path.join(UPLOAD_FOLDER, "placeholder.jpg")
+                if not os.path.exists(placeholder_img):
+                    try:
+                        from PIL import Image, ImageDraw
+                        img_ph = Image.new("RGB", (400, 500), color=(26, 58, 107))
+                        draw   = ImageDraw.Draw(img_ph)
+                        draw.rectangle([160, 100, 240, 180], fill=(232, 184, 75))
+                        img_ph.save(placeholder_img, "JPEG")
+                    except Exception:
+                        pass
 
-            COL_MAP = {
-                "student_id": ["student_id","رقم_الطالب","رقم الطالب","id","الرقم"],
-                "full_name":  ["full_name","الاسم_الكامل","الاسم الكامل","name","الاسم"],
-                "year":       ["year","السنة","العام","سنة"],
-                "college":    ["college","الكلية","كلية"],
-                "email":      ["email","الايميل","البريد","البريد_الإلكتروني","ايميل"],
-            }
-
-            def find_col(row_dict, aliases):
-                for a in aliases:
-                    if a in row_dict: return row_dict[a]
-                for k, v in row_dict.items():
-                    k_clean = str(k).strip().lower()
-                    for a in aliases:
-                        a_clean = a.strip().lower()
-                        if a_clean == k_clean or a_clean in k_clean:
-                            return v
-                return ""
-
-            results = {"created": 0, "skipped": 0, "errors": [], "preview": []}
-            total = len(rows)
-
-            placeholder_img = os.path.join(UPLOAD_FOLDER, "placeholder.jpg")
-            if not os.path.exists(placeholder_img):
+                db = get_db()
+                cur = db.cursor()
                 try:
-                    from PIL import Image, ImageDraw
-                    img_ph = Image.new("RGB", (400, 500), color=(26, 58, 107))
-                    draw   = ImageDraw.Draw(img_ph)
-                    draw.rectangle([160, 100, 240, 180], fill=(232, 184, 75))
-                    img_ph.save(placeholder_img, "JPEG")
-                except Exception:
-                    pass
+                    for idx, row in enumerate(rows, start=1):
+                        sid       = to_eng(find_col(row, COL_MAP["student_id"]).strip())
+                        full_name = find_col(row, COL_MAP["full_name"]).strip()
+                        raw_year  = find_col(row, COL_MAP["year"]).strip()
+                        year      = extract_academic_year(raw_year, sid, CURRENT_YEAR)
+                        raw_coll  = find_col(row, COL_MAP["college"]).strip()
+                        college   = match_college_name(raw_coll, user_role=user_role, user_college=user_college)
+                        email     = find_col(row, COL_MAP["email"]).strip().lower()
 
-            from image_processor import _college_folder
+                        # Only sid and full_name are required. Email is optional!
+                        if not sid or not full_name:
+                            results["errors"].append(f"سطر {idx+1}: رقم الطالب أو الاسم مفقود")
+                            results["skipped"] += 1
+                            continue
 
-            for idx, row in enumerate(rows, start=1):
-                sid       = to_eng(find_col(row, COL_MAP["student_id"]).strip())
-                full_name = find_col(row, COL_MAP["full_name"]).strip()
-                year      = to_eng(find_col(row, COL_MAP["year"]).strip())
-                college   = find_col(row, COL_MAP["college"]).strip()
-                email     = find_col(row, COL_MAP["email"]).strip().lower()
+                        try:
+                            cur.execute(f"SELECT id FROM students WHERE student_id={ph()}", (sid,))
+                            if cur.fetchone():
+                                results["skipped"] += 1
+                                results["preview"].append({"sid": sid, "name": full_name, "status": "موجود مسبقاً"})
+                                continue
 
-                if not sid or not full_name or not email:
-                    results["errors"].append(f"سطر {idx+1}: رقم الطالب أو الاسم أو البريد مفقود")
-                    results["skipped"] += 1
-                    continue
+                            col_folder = _college_folder(college)
+                            img_dir    = os.path.join(UPLOAD_FOLDER, year, col_folder)
+                            os.makedirs(img_dir, exist_ok=True)
+                            img_name   = f"{sid}_pending.jpg"
+                            img_path   = os.path.join(img_dir, img_name)
+                            rel_path   = f"uploads/{year}/{col_folder}/{img_name}"
 
-                if college and college not in COLLEGES:
-                    matched = next((c for c in COLLEGES if college in c or c in college), None)
-                    college = matched if matched else COLLEGES[0]
+                            if os.path.exists(placeholder_img):
+                                import shutil
+                                shutil.copy2(placeholder_img, img_path)
+                            else:
+                                with open(img_path, "wb") as fh:
+                                    fh.write(b"")
 
-                if user_role == "admin" and user_college:
-                    college = user_college
+                            reg_user_id = None
+                            if user_id:
+                                cur.execute(f"SELECT id FROM users WHERE id={ph()}", (user_id,))
+                                if cur.fetchone():
+                                    reg_user_id = user_id
 
-                if not year or len(year) != 4:
-                    year = sid[:4] if len(sid) >= 4 else str(CURRENT_YEAR)
+                            cur.execute(
+                                f"INSERT INTO students (student_id,full_name,year,college,email,image_path,registered_by) VALUES ({','.join([ph()]*7)})",
+                                (sid, full_name, year, college, email or None, rel_path, reg_user_id)
+                            )
+                            db.commit()
 
-                try:
-                    db = get_db()
-                    cur = db.cursor()
-                    cur.execute(f"SELECT id FROM students WHERE student_id={ph()}", (sid,))
-                    if cur.fetchone():
-                        db.close()
-                        results["skipped"] += 1
-                        results["preview"].append({"sid": sid, "name": full_name, "status": "موجود مسبقاً"})
-                        continue
+                            student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
+                            temp_pw             = secrets.token_urlsafe(8)
+                            hashed_pw           = hash_pw(temp_pw)
 
-                    col_folder = _college_folder(college)
-                    img_dir    = os.path.join(UPLOAD_FOLDER, year, col_folder)
-                    os.makedirs(img_dir, exist_ok=True)
-                    img_name   = f"{sid}_pending.jpg"
-                    img_path   = os.path.join(img_dir, img_name)
-                    rel_path   = f"uploads/{year}/{col_folder}/{img_name}"
+                            cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, sid))
+                            existing_user = cur.fetchone()
+                            if not existing_user:
+                                cur.execute(
+                                    f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
+                                    (student_login_email, hashed_pw, full_name, "student",
+                                     college, sid, True if is_use_pg() else 1, True if is_use_pg() else 1)
+                                )
+                                db.commit()
+                            else:
+                                user_id_val = existing_user["id"] if isinstance(existing_user, dict) else existing_user[0]
+                                cur.execute(
+                                    f"UPDATE users SET student_id={ph()}, full_name={ph()}, college={ph()}, is_active={ph()}, email_verified={ph()} WHERE id={ph()}",
+                                    (sid, full_name, college, True if is_use_pg() else 1, True if is_use_pg() else 1, user_id_val)
+                                )
+                                db.commit()
 
-                    if os.path.exists(placeholder_img):
-                        import shutil
-                        shutil.copy2(placeholder_img, img_path)
-                    else:
-                        with open(img_path, "wb") as fh:
-                            fh.write(b"")
+                            results["created"] += 1
+                            results["preview"].append({"sid": sid, "name": full_name, "status": "تم الإنشاء ✓"})
 
-                    reg_user_id = None
-                    if user_id:
-                        cur.execute(f"SELECT id FROM users WHERE id={ph()}", (user_id,))
-                        if cur.fetchone():
-                            reg_user_id = user_id
+                            # Send welcome email only if valid personal email provided
+                            if email and "@" in email and "." in email:
+                                card_link = f"{flask_app.config.get('SITE_URL', 'http://localhost:5000')}/student/{sid}"
+                                _send_student_welcome(email, full_name, sid, student_login_email, temp_pw, card_link)
 
-                    cur.execute(
-                        f"INSERT INTO students (student_id,full_name,year,college,email,image_path,registered_by) VALUES ({','.join([ph()]*7)})",
-                        (sid, full_name, year, college, email or None, rel_path, reg_user_id)
-                    )
-                    db.commit()
+                        except Exception as row_err:
+                            results["errors"].append(f"سطر {idx+1} ({sid}): {str(row_err)}")
+                            results["skipped"] += 1
 
-                    student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
-                    temp_pw             = secrets.token_urlsafe(8)
-                    hashed_pw           = hash_pw(temp_pw)
-
-                    cur.execute(f"SELECT id FROM users WHERE email={ph()} OR student_id={ph()}", (student_login_email, sid))
-                    existing_user = cur.fetchone()
-                    if not existing_user:
-                        cur.execute(
-                            f"INSERT INTO users (email,password_hash,full_name,role,college,student_id,is_active,email_verified) VALUES ({','.join([ph()]*8)})",
-                            (student_login_email, hashed_pw, full_name, "student",
-                             college, sid, True if is_use_pg() else 1, True if is_use_pg() else 1)
-                        )
-                        db.commit()
-
-                    results["created"] += 1
-                    results["preview"].append({"sid": sid, "name": full_name, "status": "تم الإنشاء ✓"})
-
-                    # Send welcome email
-                    if email:
-                        card_link = f"{flask_app.config.get('SITE_URL', 'http://localhost:5000')}/student/{sid}"
-                        _send_student_welcome(email, full_name, sid, student_login_email, temp_pw, card_link)
-
-
-                except Exception as row_err:
-                    results["errors"].append(f"سطر {idx+1} ({sid}): {str(row_err)}")
-                    results["skipped"] += 1
+                        # Update progress
+                        progress_pct = int((idx / total) * 100)
+                        with _jobs_lock:
+                            _jobs_cache[job_id]["progress"] = progress_pct
                 finally:
                     try:
                         db.close()
                     except Exception:
                         pass
 
-                # Update progress
-                progress_pct = int((idx / total) * 100)
                 with _jobs_lock:
-                    _jobs_cache[job_id]["progress"] = progress_pct
+                    _jobs_cache[job_id]["status"] = JobStatus.COMPLETED
+                    _jobs_cache[job_id]["progress"] = 100
+                    _jobs_cache[job_id]["result"] = results
 
-            with _jobs_lock:
-                _jobs_cache[job_id]["status"] = JobStatus.COMPLETED
-                _jobs_cache[job_id]["progress"] = 100
-                _jobs_cache[job_id]["result"] = results
-
-            _persist_job_status(job_id, JobStatus.COMPLETED, progress=100, result=results)
-            logger.info(f"Bulk import job {job_id} finished: {results['created']} created, {results['skipped']} skipped.")
-            return results
+                _persist_job_status(job_id, JobStatus.COMPLETED, progress=100, result=results)
+                logger.info(f"Bulk import job {job_id} finished: {results['created']} created, {results['skipped']} skipped.")
+                return results
 
         except Exception as e:
             logger.exception(f"Exception during bulk import job {job_id}: {e}")

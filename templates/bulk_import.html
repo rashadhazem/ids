@@ -58,7 +58,7 @@
           <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
           <span class="file-icon">📊</span>
           <p><strong>انقر لاختيار الملف</strong> أو اسحبه هنا</p>
-          <p style="margin-top:5px;font-size:.75rem">Excel (.xlsx) أو CSV – حد 500 طالب</p>
+          <p style="margin-top:5px;font-size:.75rem">ملفات Excel (.xlsx, .xls) أو CSV – يدعم حتى 5000 طالب</p>
         </div>
 
         <div id="file-info" style="display:none;margin-top:12px;padding:10px 14px;
@@ -140,20 +140,20 @@
           <div class="step-badge">٢</div>
           <div class="step-text">
             <strong>أضف بيانات الطلاب</strong>
-            <span>كل سطر = طالب واحد. أعمدة إلزامية: رقم الطالب + الاسم</span>
+            <span>كل سطر = طالب واحد. الأعمدة الإلزامية: رقم/كود الطالب + الاسم (الإيميل اختياري)</span>
           </div>
         </div>
         <div class="step-row">
           <div class="step-badge">٣</div>
           <div class="step-text">
             <strong>ارفع الملف</strong>
-            <span>النظام سيُنشئ السجلات تلقائياً ويُرسل إيميل لكل طالب عنده إيميل</span>
+            <span>النظام يُنشئ حسابات الطلاب تلقائياً ويُرسل بيانات الدخول لمن لديه بريد إلكتروني</span>
           </div>
         </div>
         <div class="step-row">
           <div class="step-badge">٤</div>
           <div class="step-text">
-            <strong>الطالب يفتح رابطه</strong>
+            <strong>الطالب يفتح حسابه</strong>
             <span>يجد بطاقته جاهزة ويرفع صورته الشخصية</span>
           </div>
         </div>
@@ -175,7 +175,7 @@
       </div>
       <div class="card-body">
         <p style="font-size:.78rem;color:var(--muted);font-family:'Tajawal';margin-bottom:12px">
-          الأعمدة المقبولة (يمكن استخدام العربية أو الإنجليزية):
+          الأعمدة المقبولة (يمكن استخدام العربية أو الإنجليزية بأي ترتيب):
         </p>
         <table class="template-table">
           <tr>
@@ -183,28 +183,28 @@
           </tr>
           <tr>
             <td>رقم الطالب</td>
-            <td><span class="col-tag">student_id</span><span class="col-tag">رقم_الطالب</span><span class="col-tag">رقم الطالب</span></td>
+            <td><span class="col-tag">student_id</span><span class="col-tag">رقم الطالب</span><span class="col-tag">كود الطالب</span><span class="col-tag">رقم الجلوس</span></td>
             <td style="color:#c53030;font-weight:700">✓ نعم</td>
           </tr>
           <tr>
             <td>الاسم</td>
-            <td><span class="col-tag">full_name</span><span class="col-tag">الاسم_الكامل</span><span class="col-tag">الاسم</span></td>
+            <td><span class="col-tag">full_name</span><span class="col-tag">اسم الطالب</span><span class="col-tag">الاسم بالكامل</span></td>
             <td style="color:#c53030;font-weight:700">✓ نعم</td>
           </tr>
           <tr>
             <td>السنة</td>
-            <td><span class="col-tag">year</span><span class="col-tag">السنة</span><span class="col-tag">العام</span></td>
+            <td><span class="col-tag">year</span><span class="col-tag">الفرقة</span><span class="col-tag">المستوى</span><span class="col-tag">العام الدراسي</span></td>
             <td style="color:#6b7a99">اختياري</td>
           </tr>
           <tr>
             <td>الكلية</td>
-            <td><span class="col-tag">college</span><span class="col-tag">الكلية</span></td>
+            <td><span class="col-tag">college</span><span class="col-tag">الكلية</span><span class="col-tag">القسم / التخصص</span></td>
             <td style="color:#6b7a99">اختياري</td>
           </tr>
           <tr>
-            <td>الإيميل</td>
-            <td><span class="col-tag">email</span><span class="col-tag">الايميل</span><span class="col-tag">البريد</span></td>
-            <td style="color:#276749;font-weight:700">إلزامي<br><small style="color:#276749">لإرسال بيانات الدخول والبطاقة</small></td>
+            <td>الإيميل الشخصي</td>
+            <td><span class="col-tag">email</span><span class="col-tag">البريد الإلكتروني</span><span class="col-tag">ايميل</span></td>
+            <td style="color:#276749">اختياري<br><small style="color:#6b7a99">لإرسال بيانات الدخول</small></td>
           </tr>
         </table>
       </div>
@@ -270,7 +270,20 @@ document.getElementById('import-btn').addEventListener('click', async () => {
         'Accept': 'application/json'
       }
     });
-    const data = await res.json();
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      clearInterval(timer);
+      if (res.status === 413) {
+        showToast('حجم الملف كبير جداً (الحد الأقصى 15 ميجابايت)', 'error');
+      } else {
+        showToast(`خطأ في استجابة الخادم (${res.status})`, 'error');
+      }
+      btn.disabled = false; sp.style.display = 'none'; btxt.textContent = 'استيراد البيانات';
+      return;
+    }
 
     clearInterval(timer);
 

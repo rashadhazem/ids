@@ -2266,28 +2266,24 @@ def bulk_import():
     if not f or not f.filename:
         return jsonify(success=False, message="يرجى رفع ملف Excel أو CSV"), 400
 
-    ext = f.filename.rsplit(".", 1)[-1].lower()
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
     if ext not in ("xlsx", "xls", "csv"):
-        return jsonify(success=False, message="يُقبل xlsx أو csv فقط"), 400
+        return jsonify(success=False, message="يُقبل ملفات Excel (.xlsx, .xls) أو CSV فقط"), 400
 
     raw = f.read()
 
-    rows = []
+    from bulk_import_helper import (
+        parse_uploaded_file, find_col, COL_MAP,
+        clean_excel_val, match_college_name, extract_academic_year
+    )
+
     try:
-        if ext == "csv":
-            import csv
-            text   = raw.decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(text))
-            rows   = list(reader)
-        else:
-            from openpyxl import load_workbook
-            wb     = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-            ws     = wb.active
-            headers = [str(c.value or "").strip() for c in next(ws.iter_rows(min_row=1, max_row=1))]
-            for xl_row in ws.iter_rows(min_row=2, values_only=True):
-                rows.append(dict(zip(headers, [str(v or "").strip() for v in xl_row])))
+        rows = parse_uploaded_file(raw, f.filename)
     except Exception as e:
         return jsonify(success=False, message=f"خطأ في قراءة الملف: {e}"), 400
+
+    if not rows:
+        return jsonify(success=False, message="الملف فارغ أو لم يتم العثور على أسطر بيانات صالحة"), 400
 
     # Support async background job for large batches or explicit requests
     is_async = (
@@ -2298,7 +2294,7 @@ def bulk_import():
     if is_async:
         job_id = submit_bulk_import_job(
             app,
-            rows=rows[:500],
+            rows=rows[:5000],
             user_id=session.get("user_id"),
             user_role=session.get("role"),
             user_college=session.get("college")
@@ -2307,65 +2303,31 @@ def bulk_import():
             success=True,
             async_job=True,
             job_id=job_id,
-            total=min(len(rows), 500),
-            message=f"تم بدء استيراد {min(len(rows), 500)} طالب في الخلفية بنجاح"
+            total=min(len(rows), 5000),
+            message=f"تم بدء استيراد {min(len(rows), 5000)} طالب في الخلفية بنجاح"
         ), 202
-
-    # Expected columns (flexible mapping)
-    COL_MAP = {
-        "student_id": ["student_id","رقم_الطالب","رقم الطالب","id","الرقم"],
-        "full_name":  ["full_name","الاسم_الكامل","الاسم الكامل","name","الاسم"],
-        "year":       ["year","السنة","العام","سنة"],
-        "college":    ["college","الكلية","كلية"],
-        "email":      ["email","الايميل","البريد","البريد_الإلكتروني","ايميل"],
-    }
-
-    def find_col(row_dict, aliases):
-        for a in aliases:
-            if a in row_dict: return row_dict[a]
-        # Case-insensitive / partial match for composite headers like "student_id / رقم الطالب"
-        for k, v in row_dict.items():
-            k_clean = str(k).strip().lower()
-            for a in aliases:
-                a_clean = a.strip().lower()
-                if a_clean == k_clean or a_clean in k_clean:
-                    return v
-        return ""
 
     results = {"created": 0, "skipped": 0, "errors": [], "preview": []}
 
     db = get_db()
     cur = db.cursor()
     try:
-        for i, row in enumerate(rows[:500], start=2):  # max 500 rows
+        for i, row in enumerate(rows[:5000], start=2):  # support up to 5000 rows
             sid       = to_eng(find_col(row, COL_MAP["student_id"]).strip())
             full_name = find_col(row, COL_MAP["full_name"]).strip()
-            year      = to_eng(find_col(row, COL_MAP["year"]).strip())
-            college   = find_col(row, COL_MAP["college"]).strip()
+            raw_year  = find_col(row, COL_MAP["year"]).strip()
+            year      = extract_academic_year(raw_year, sid, CURRENT_YEAR)
+            raw_coll  = find_col(row, COL_MAP["college"]).strip()
+            college   = match_college_name(raw_coll, user_role=session.get("role"), user_college=session.get("college"))
             email     = find_col(row, COL_MAP["email"]).strip().lower()
 
-            if not sid or not full_name or not email:
-                results["errors"].append(f"سطر {i}: رقم الطالب أو الاسم أو البريد الإلكتروني مفقود (البريد إلزامي)")
+            # Only sid and full_name are strictly required. Email is optional!
+            if not sid or not full_name:
+                results["errors"].append(f"سطر {i}: رقم الطالب أو الاسم مفقود")
                 results["skipped"] += 1
                 continue
 
-            # Validate college
-            if college and college not in COLLEGES:
-                # Try partial match
-                matched = next((c for c in COLLEGES if college in c or c in college), None)
-                if matched:
-                    college = matched
-                else:
-                    college = COLLEGES[0]  # fallback
-
-            # admin restricted to own college
-            if session.get("role") == "admin" and session.get("college"):
-                college = session.get("college")
-
-            if not year or not re.fullmatch(r"\d{4}", year):
-                year = sid[:4] if len(sid) >= 4 else str(CURRENT_YEAR)
-
-            # Check if already exists
+            # Check if already exists in students table
             cur.execute(f"SELECT id FROM students WHERE student_id={ph()}", (sid,))
             if cur.fetchone():
                 results["skipped"] += 1
@@ -2419,7 +2381,7 @@ def bulk_import():
                 db.commit()
 
                 # ── Create student user account ──
-                # Email = student_id@domain  (e.g. 2024001001@university.edu.eg)
+                # Login Email = student_id@domain  (e.g. 2024001001@bua.edu.eg)
                 student_login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
                 hashed_pw           = hash_pw(temp_pw)
 
@@ -2444,14 +2406,14 @@ def bulk_import():
                 results["preview"].append({
                     "sid":      sid,
                     "name":     full_name,
-                    "status":   "تم الإنشاء",
+                    "status":   "تم الإنشاء ✓",
                     "email":    student_login_email,
                 })
                 log_action(reg_uid, "BULK_IMPORT_STUDENT", target=sid,
                            detail=full_name, ip=request.remote_addr)
 
-                # Send welcome email with login credentials
-                if email:
+                # Send welcome email with login credentials only if email provided
+                if email and "@" in email and "." in email:
                     card_link   = url_for("student_card", student_id=sid, _external=True)
                     login_email = f"{sid}@{UNIVERSITY_DOMAIN}"
                     _send_student_welcome(email, full_name, sid, login_email, temp_pw, card_link)
@@ -2479,8 +2441,8 @@ def bulk_import_template():
     ca = Alignment(horizontal="center", vertical="center")
 
     headers = ["student_id", "full_name", "year", "college", "email"]
-    ar_headers = ["رقم الطالب", "الاسم الكامل", "السنة", "الكلية", "الإيميل"]
-    widths = [18, 40, 8, 36, 34]
+    ar_headers = ["رقم الطالب (إلزامي)", "الاسم الكامل (إلزامي)", "السنة (اختياري)", "الكلية (اختياري)", "الإيميل الشخصي (اختياري)"]
+    widths = [22, 40, 16, 36, 34]
 
     for ci, (h, ah, w) in enumerate(zip(headers, ar_headers, widths), 1):
         cell = ws.cell(1, ci, f"{h} / {ah}")
