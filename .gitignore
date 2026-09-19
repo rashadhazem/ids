@@ -10,3 +10,5 @@ instance/
 # Student photo uploads (managed locally & backed up to Google Drive)
 static/uploads/*
 !static/uploads/.gitkeep
+
+rashad.xlsx
