@@ -1,4 +1,4 @@
-import os, re, secrets, io, zipfile, base64
+import os, re, secrets, io, zipfile, base64, html
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -62,7 +62,9 @@ app.config["JWT_SECRET_KEY"]           = jwt_secret_env
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=8)
 app.config["SESSION_COOKIE_HTTPONLY"]  = True
 app.config["SESSION_COOKIE_SAMESITE"]  = "Lax"
-app.config["SESSION_COOKIE_SECURE"]    = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+app.config["SESSION_COOKIE_SECURE"]    = (
+    os.getenv("SESSION_COOKIE_SECURE", "true" if os.getenv("APP_ENV") == "production" else "false").lower() == "true"
+)
 app.config["MAX_CONTENT_LENGTH"]       = int(os.getenv("MAX_CONTENT_LENGTH", 15*1024*1024))
 app.config["WTF_CSRF_TIME_LIMIT"]      = None  # CSRF tokens remain valid for the full duration of session
 app.config["WTF_CSRF_CHECK_DEFAULT"]   = True
@@ -117,6 +119,17 @@ def handle_csrf_error(e):
     return render_template("auth_message.html",
                            title="انتهت صلاحية الجلسة",
                            message="انتهت صلاحية رمز الأمان الخاص بك أو تم تحديث الجلسة. يرجى إعادة تحميل الصفحة والمحاولة مجدداً."), 400
+
+@app.teardown_appcontext
+def cleanup_request_db_conns(exception=None):
+    """Guarantees any database connection opened during request lifecycle is safely closed."""
+    conns = getattr(g, "_db_conns", None)
+    if conns:
+        for c in conns:
+            try:
+                c.close()
+            except Exception:
+                pass
 
 mail    = Mail(app)
 jwt     = JWTManager(app)
@@ -293,51 +306,60 @@ def _current_user():
 # ── email templates ────────────────────────────────────────────────────────
 
 def _email_verify_html(name, link):
+    safe_name = html.escape(str(name or ""))
+    safe_link = html.escape(str(link or ""))
     return f"""
 <div dir="rtl" style="font-family:Cairo,Arial;max-width:520px;margin:auto">
   <div style="background:#0d1f3c;padding:28px;border-radius:14px 14px 0 0;text-align:center">
     <h2 style="color:#e8b84b;margin:0">تأكيد البريد الإلكتروني</h2>
   </div>
   <div style="background:#f0f4f9;padding:28px;border-radius:0 0 14px 14px">
-    <p>أهلاً <strong>{name}</strong>،</p>
+    <p>أهلاً <strong>{safe_name}</strong>،</p>
     <p>انقر على الزر أدناه لتفعيل حسابك:</p>
-    <a href="{link}" style="display:inline-block;background:#0d1f3c;color:#e8b84b;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;margin:16px 0">تفعيل الحساب</a>
+    <a href="{safe_link}" style="display:inline-block;background:#0d1f3c;color:#e8b84b;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;margin:16px 0">تفعيل الحساب</a>
     <p style="color:#888;font-size:.85rem">الرابط صالح لمدة 24 ساعة</p>
   </div>
 </div>"""
 
 def _email_reset_html(name, link):
+    safe_name = html.escape(str(name or ""))
+    safe_link = html.escape(str(link or ""))
     return f"""
 <div dir="rtl" style="font-family:Cairo,Arial;max-width:520px;margin:auto">
   <div style="background:#c53030;padding:28px;border-radius:14px 14px 0 0;text-align:center">
     <h2 style="color:#fff;margin:0">إعادة تعيين كلمة المرور</h2>
   </div>
   <div style="background:#f0f4f9;padding:28px;border-radius:0 0 14px 14px">
-    <p>أهلاً <strong>{name}</strong>،</p>
+    <p>أهلاً <strong>{safe_name}</strong>،</p>
     <p>انقر على الزر أدناه لإعادة تعيين كلمة مرورك:</p>
-    <a href="{link}" style="display:inline-block;background:#c53030;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;margin:16px 0">إعادة التعيين</a>
+    <a href="{safe_link}" style="display:inline-block;background:#c53030;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;margin:16px 0">إعادة التعيين</a>
     <p style="color:#888;font-size:.85rem">الرابط صالح لمدة ساعة واحدة فقط. إذا لم تطلب ذلك تجاهل هذا البريد.</p>
   </div>
 </div>"""
 
 def _email_registered_html(name, student_id, login_email, password, card_link):
+    safe_name = html.escape(str(name or ""))
+    safe_sid = html.escape(str(student_id or ""))
+    safe_login = html.escape(str(login_email or ""))
+    safe_pw = html.escape(str(password or ""))
+    safe_link = html.escape(str(card_link or ""))
     return f"""
 <div dir="rtl" style="font-family:Cairo,Arial;max-width:520px;margin:auto">
   <div style="background:#0d1f3c;padding:28px;border-radius:14px 14px 0 0;text-align:center">
     <h2 style="color:#e8b84b;margin:0">&#127891; تم تسجيلك بنجاح</h2>
   </div>
   <div style="background:#f0f4f9;padding:28px;border-radius:0 0 14px 14px">
-    <p>أهلاً <strong>{name}</strong>،</p>
+    <p>أهلاً <strong>{safe_name}</strong>،</p>
     <p>تم تسجيلك في النظام بنجاح. رقمك الجامعي هو:</p>
-    <div style="background:#0d1f3c;color:#e8b84b;font-family:monospace;font-size:1.4rem;font-weight:700;padding:14px;border-radius:8px;text-align:center;letter-spacing:3px;margin:16px 0">{student_id}</div>
+    <div style="background:#0d1f3c;color:#e8b84b;font-family:monospace;font-size:1.4rem;font-weight:700;padding:14px;border-radius:8px;text-align:center;letter-spacing:3px;margin:16px 0">{safe_sid}</div>
 
     <div style="background:#fff;border:1px solid #dce3ef;border-radius:10px;padding:16px;margin:14px 0">
       <p style="font-weight:700;color:#1a2744;margin-bottom:8px">بيانات تسجيل الدخول:</p>
-      <p style="font-size:.88rem;color:#444;margin-bottom:5px">البريد الجامعي / اسم المستخدم: <strong style="direction:ltr;display:inline-block">{login_email}</strong></p>
-      <p style="font-size:.88rem;color:#444">كلمة المرور (كود الطالب): <strong style="font-family:monospace;letter-spacing:1px">{password}</strong></p>
+      <p style="font-size:.88rem;color:#444;margin-bottom:5px">البريد الجامعي / اسم المستخدم: <strong style="direction:ltr;display:inline-block">{safe_login}</strong></p>
+      <p style="font-size:.88rem;color:#444">كلمة المرور (كود الطالب): <strong style="font-family:monospace;letter-spacing:1px">{safe_pw}</strong></p>
     </div>
 
-    <a href="{card_link}" style="display:inline-block;background:#1a3a6b;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">عرض بطاقة الهوية</a>
+    <a href="{safe_link}" style="display:inline-block;background:#1a3a6b;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">عرض بطاقة الهوية</a>
   </div>
 </div>"""
 
@@ -978,9 +1000,13 @@ def register():
         except Exception as e:
             db.close()
             # Clean up saved file
-            if not result.get("cloudinary") and os.path.exists(
-                    os.path.join(STATIC_ROOT, result["path"])):
-                os.remove(os.path.join(STATIC_ROOT, result["path"]))
+            if not result.get("cloudinary") and result.get("path"):
+                clean_target = os.path.join(STATIC_ROOT, result["path"])
+                if os.path.isfile(clean_target):
+                    try:
+                        os.remove(clean_target)
+                    except Exception:
+                        pass
             if "UNIQUE" in str(e) or "unique" in str(e).lower():
                 return jsonify(success=False,
                     message=f"⚠️ الرقم {student_id} مسجل مسبقاً", duplicate=True), 409
@@ -1248,9 +1274,16 @@ def api_submit_photo_job():
     if not image_file or not student_id:
         return jsonify(success=False, message="يرجى إرسال الصورة والرقم الجامعي"), 400
 
+    if not image_file.filename.lower().endswith((".jpg", ".jpeg", ".png")):
+        return jsonify(success=False, message="يُسمح فقط برفع صور JPG أو PNG"), 400
+
     raw = image_file.read()
     if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
         return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
+
+    is_magic_ok, magic_msg = validate_image_magic_bytes(raw)
+    if not is_magic_ok:
+        return jsonify(success=False, message=magic_msg), 400
 
     db = get_db()
     cur = db.cursor()
@@ -1263,6 +1296,18 @@ def api_submit_photo_job():
     year = row["year"] if isinstance(row, dict) else row[0]
     college = row["college"] if isinstance(row, dict) else row[1]
     old_rel = (row["image_path"] if isinstance(row, dict) else row[2]) or ""
+
+    role = session.get("role")
+    my_sid = session.get("student_id")
+    user_college = session.get("college")
+
+    # Strict RBAC authorization
+    if role == "student":
+        if not my_sid or my_sid != student_id:
+            return jsonify(success=False, message="غير مصرح: يمكنك تعديل صورتك الشخصية فقط"), 403
+    elif role == "admin":
+        if user_college and college != user_college:
+            return jsonify(success=False, message=f"غير مصرح: يمكنك رفع صور لطلاب كلية {user_college} فقط"), 403
 
     job_id = submit_photo_processing_job(
         raw_bytes=raw,
@@ -1341,10 +1386,16 @@ def admin_delete(sid):
     cur.execute(f"SELECT * FROM students WHERE id={ph()}", (sid,))
     row = _row_to_dict(cur.fetchone())
     if not row: db.close(); return jsonify(success=False, message="غير موجود"), 404
-    img_path = os.path.join(STATIC_ROOT, row.get("image_path",""))
+    rel = row.get("image_path", "")
     cur.execute(f"DELETE FROM students WHERE id={ph()}", (sid,))
     db.commit(); db.close()
-    if os.path.exists(img_path): os.remove(img_path)
+    if rel:
+        img_path = os.path.join(STATIC_ROOT, rel)
+        if os.path.isfile(img_path):
+            try:
+                os.remove(img_path)
+            except Exception:
+                pass
     log_action(session.get("user_id"), "DELETE_STUDENT",
                target=row.get("student_id"), detail=row.get("full_name"),
                ip=request.remote_addr)
@@ -1421,10 +1472,17 @@ def admin_edit_student(sid):
     changed_location = (college != old_college or year != old_year or new_student_id != old_student_id)
     new_image_path = s.get("image_path")
     if image_file and image_file.filename:
+        if not image_file.filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            db.close()
+            return jsonify(success=False, message="يُسمح فقط برفع صور JPG أو PNG"), 400
         raw_img = image_file.read()
         if len(raw_img) > app.config["MAX_CONTENT_LENGTH"]:
             db.close()
             return jsonify(success=False, message="حجم الصورة يتجاوز 5 MB"), 400
+        is_magic_ok, magic_msg = validate_image_magic_bytes(raw_img)
+        if not is_magic_ok:
+            db.close()
+            return jsonify(success=False, message=magic_msg), 400
         try:
             ok, face_msg, processed = process_and_validate_photo(raw_img, auto_crop=True)
             if not ok:
@@ -1435,9 +1493,10 @@ def admin_edit_student(sid):
             new_image_path = res_img["path"]
             if changed_location:
                 # Remove active file in old college path if it differed
-                old_full = os.path.join(STATIC_ROOT, s.get("image_path", "")) if s.get("image_path") else ""
+                old_rel_val = s.get("image_path", "")
+                old_full = os.path.join(STATIC_ROOT, old_rel_val) if old_rel_val else ""
                 new_full = os.path.join(STATIC_ROOT, new_image_path)
-                if old_full and os.path.exists(old_full) and os.path.abspath(old_full) != os.path.abspath(new_full):
+                if old_full and os.path.isfile(old_full) and os.path.abspath(old_full) != os.path.abspath(new_full):
                     try:
                         os.remove(old_full)
                     except Exception:
@@ -2203,7 +2262,7 @@ def api_login():
 @app.route("/api/students")
 @jwt_required()
 def api_students():
-    page     = max(int(request.args.get("page",1)),1)
+    page     = safe_int(request.args.get("page", 1), default=1, min_val=1)
     per_page = 20; offset=(page-1)*per_page
     db = get_db(); cur = db.cursor()
     if is_use_pg():
@@ -2271,6 +2330,8 @@ def bulk_import():
         return jsonify(success=False, message="يُقبل ملفات Excel (.xlsx, .xls) أو CSV فقط"), 400
 
     raw = f.read()
+    if len(raw) > app.config["MAX_CONTENT_LENGTH"]:
+        return jsonify(success=False, message="حجم الملف يتجاوز الحد الأقصى المسموح به"), 400
 
     from bulk_import_helper import (
         parse_uploaded_file, find_col, COL_MAP,
@@ -2477,34 +2538,39 @@ def bulk_import_template():
 def _send_student_welcome(to: str, name: str, student_id: str,
                           login_email: str, temp_pw: str, card_link: str):
     """Send welcome email with login credentials to newly imported student."""
-    html = f"""
+    safe_name = html.escape(str(name or ""))
+    safe_sid = html.escape(str(student_id or ""))
+    safe_login = html.escape(str(login_email or ""))
+    safe_pw = html.escape(str(temp_pw or ""))
+    safe_link = html.escape(str(card_link or ""))
+    html_content = f"""
 <div dir="rtl" style="font-family:Cairo,Arial;max-width:540px;margin:auto">
   <div style="background:linear-gradient(135deg,#0d1f3c,#1a3a6b);padding:30px;border-radius:14px 14px 0 0;text-align:center">
     <h1 style="color:#e8b84b;margin:0;font-size:1.4rem">&#127891; مرحباً بك في النظام الجامعي</h1>
   </div>
   <div style="background:#f0f4f9;padding:28px;border-radius:0 0 14px 14px">
-    <p style="font-size:1rem">أهلاً <strong>{name}</strong>،</p>
+    <p style="font-size:1rem">أهلاً <strong>{safe_name}</strong>،</p>
     <p style="margin-top:8px;color:#444">تم تسجيلك في نظام القيد الجامعي.</p>
 
     <div style="background:#0d1f3c;border-radius:10px;padding:16px;margin:16px 0">
       <p style="color:rgba(255,255,255,.5);font-size:.8rem;margin-bottom:8px;text-align:center">رقمك الجامعي</p>
-      <p style="color:#e8b84b;font-family:monospace;font-size:1.5rem;font-weight:700;letter-spacing:3px;text-align:center">{student_id}</p>
+      <p style="color:#e8b84b;font-family:monospace;font-size:1.5rem;font-weight:700;letter-spacing:3px;text-align:center">{safe_sid}</p>
     </div>
 
     <div style="background:#fff;border:1px solid #dce3ef;border-radius:10px;padding:16px;margin:14px 0">
       <p style="font-weight:700;color:#1a2744;margin-bottom:10px">بيانات تسجيل الدخول:</p>
-      <p style="font-size:.88rem;color:#444;margin-bottom:5px">البريد: <strong style="direction:ltr;display:inline-block">{login_email}</strong></p>
-      <p style="font-size:.88rem;color:#444">كلمة المرور المؤقتة: <strong style="font-family:monospace;letter-spacing:1px">{temp_pw}</strong></p>
+      <p style="font-size:.88rem;color:#444;margin-bottom:5px">البريد: <strong style="direction:ltr;display:inline-block">{safe_login}</strong></p>
+      <p style="font-size:.88rem;color:#444">كلمة المرور المؤقتة: <strong style="font-family:monospace;letter-spacing:1px">{safe_pw}</strong></p>
       <p style="font-size:.75rem;color:#c53030;margin-top:8px">* يُنصح بتغيير كلمة المرور بعد أول دخول</p>
     </div>
 
-    <a href="{card_link}" style="display:inline-block;background:#1a3a6b;color:#e8b84b;
+    <a href="{safe_link}" style="display:inline-block;background:#1a3a6b;color:#e8b84b;
       padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:1rem;margin:10px 0">
       فتح بطاقة الهوية ورفع الصورة
     </a>
   </div>
 </div>"""
-    send_email(to, "مرحباً – تم تسجيلك في النظام الجامعي", html)
+    send_email(to, "مرحباً – تم تسجيلك في النظام الجامعي", html_content)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -2830,11 +2896,18 @@ def not_found(e):
 
 @app.errorhandler(413)
 def request_entity_too_large(e):
-    if request.is_json or request.path.startswith(("/api/", "/admin/")):
-        return jsonify(success=False, message="حجم الملف كبير جداً. الحد الأقصى المسموح به هو 5 ميجابايت."), 413
+    msg = "حجم الملف المرفوع كبير جداً ويتجاوز الحد الأقصى المسموح به."
+    is_ajax = (
+        request.is_json or 
+        request.path.startswith(("/api/", "/admin/")) or
+        request.headers.get("X-Requested-With") == "XMLHttpRequest" or
+        "application/json" in request.headers.get("Accept", "")
+    )
+    if is_ajax:
+        return jsonify(success=False, message=msg, error=msg), 413
     return render_template("auth_message.html",
         title="حجم الملف كبير جداً",
-        msg="الحد الأقصى المسموح به للملفات هو 5 ميجابايت. يرجى اختيار ملف أصغر حجماً.", type="error"), 413
+        msg=msg, type="error"), 413
 
 @app.errorhandler(500)
 def internal_server_error(e):

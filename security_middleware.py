@@ -257,7 +257,7 @@ def init_security_middleware(app):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
 
         # 5. Device Permissions Policy
-        response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
+        response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(self), microphone=()")
 
         # 6. Content-Security-Policy (Allow trusted CDNs and inline styles for UI)
         csp = (

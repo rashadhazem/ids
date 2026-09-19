@@ -216,6 +216,18 @@ def _get_pg_pool(db_url):
     return _pg_pool
 
 
+def _track_conn(conn):
+    try:
+        from flask import has_request_context, g
+        if has_request_context() and g is not None:
+            if not hasattr(g, "_db_conns"):
+                g._db_conns = []
+            g._db_conns.append(conn)
+    except Exception:
+        pass
+    return conn
+
+
 # ── connection factory ─────────────────────────────────────────────────────
 def get_db(force_sqlite: bool = False):
     global USE_PG, DB_URL, _PG_LAST_FAILED_AT, _PG_UNAVAILABLE, _PG_WARNED
@@ -229,7 +241,7 @@ def get_db(force_sqlite: bool = False):
             raise RuntimeError("PostgreSQL database is currently unavailable in production. Refusing silent fallback to SQLite to prevent data loss.")
         USE_PG = False
         _ensure_sqlite_initialized()
-        return _connect_sqlite()
+        return _track_conn(_connect_sqlite())
 
     USE_PG = True
 
@@ -239,7 +251,7 @@ def get_db(force_sqlite: bool = False):
         try:
             raw_conn = pool.getconn()
             raw_conn.autocommit = False
-            return PooledPGConnectionWrapper(pool, raw_conn)
+            return _track_conn(PooledPGConnectionWrapper(pool, raw_conn))
         except Exception as pe:
             print(f"[WARNING] Pool getconn failed ({pe}), trying direct connect...")
 
@@ -248,7 +260,7 @@ def get_db(force_sqlite: bool = False):
             raise RuntimeError("PostgreSQL database is currently unavailable in production. Refusing silent fallback to SQLite to prevent data loss.")
         USE_PG = False
         _ensure_sqlite_initialized()
-        return _connect_sqlite()
+        return _track_conn(_connect_sqlite())
 
     # Fallback to direct connect if pool not initialized
     try:
@@ -257,7 +269,7 @@ def get_db(force_sqlite: bool = False):
             connect_timeout=PG_TIMEOUT,
             cursor_factory=psycopg2.extras.RealDictCursor
         )
-        return conn
+        return _track_conn(conn)
     except Exception as e:
         _PG_LAST_FAILED_AT = time.time()
         _PG_UNAVAILABLE = True
@@ -268,7 +280,7 @@ def get_db(force_sqlite: bool = False):
             _PG_WARNED = True
         USE_PG = False
         _ensure_sqlite_initialized()
-        return _connect_sqlite()
+        return _track_conn(_connect_sqlite())
 
 
 def placeholder(n: int) -> str:

@@ -182,9 +182,12 @@ def parse_uploaded_file(raw_bytes: bytes, filename: str) -> List[Dict[str, str]]
         try:
             from openpyxl import load_workbook
             wb = load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
-            ws = wb.active
-            for xl_row in ws.iter_rows(values_only=True):
-                raw_rows.append([clean_excel_val(v) for v in xl_row])
+            try:
+                ws = wb.active
+                for xl_row in ws.iter_rows(values_only=True):
+                    raw_rows.append([clean_excel_val(v) for v in xl_row])
+            finally:
+                wb.close()
         except Exception as e:
             raise ValueError(f"تعذر قراءة ملف Excel (.xlsx): {e}")
 
