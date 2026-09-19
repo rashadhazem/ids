@@ -2274,7 +2274,7 @@ def bulk_import():
 
     from bulk_import_helper import (
         parse_uploaded_file, find_col, COL_MAP,
-        clean_excel_val, match_college_name, extract_academic_year
+        clean_excel_val, match_college_name, extract_academic_year, extract_email
     )
 
     try:
@@ -2319,7 +2319,7 @@ def bulk_import():
             year      = extract_academic_year(raw_year, sid, CURRENT_YEAR)
             raw_coll  = find_col(row, COL_MAP["college"]).strip()
             college   = match_college_name(raw_coll, user_role=session.get("role"), user_college=session.get("college"))
-            email     = find_col(row, COL_MAP["email"]).strip().lower()
+            email     = extract_email(row)
 
             # Only sid and full_name are strictly required. Email is optional!
             if not sid or not full_name:

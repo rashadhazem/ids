@@ -345,5 +345,70 @@ class TestBulkImportExcel(unittest.TestCase):
         db.commit()
         db.close()
 
+    def test_07_import_actual_rashad_xlsx(self):
+        """
+        Verify the actual user-provided sample file rashad.xlsx:
+        - Contains column header 'الإيمبيل'
+        - Contains Row 8 with email 'mohamed.2020123456.bua.edu.eg' (auto-fixed to @)
+        - Contains 8 students
+        - Verifies clean import and duplicate detection
+        """
+        rashad_file = os.path.join(os.path.dirname(__file__), "..", "rashad.xlsx")
+        self.assertTrue(os.path.exists(rashad_file), "rashad.xlsx must exist in project root")
+
+        import openpyxl
+        wb = openpyxl.load_workbook(rashad_file, data_only=True)
+        ws = wb.active
+        sids = []
+        for r in list(ws.iter_rows(values_only=True))[1:]:
+            if r and r[0]:
+                sids.append(str(r[0]).strip())
+
+        # Clean DB for fresh import test
+        db = get_db()
+        cur = db.cursor()
+        for sid in sids:
+            cur.execute(f"DELETE FROM students WHERE student_id={ph()}", (sid,))
+            cur.execute(f"DELETE FROM users WHERE student_id={ph()}", (sid,))
+        db.commit()
+        db.close()
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["user_id"] = 1
+                sess["role"] = "superadmin"
+                sess["user_name"] = "مدير النظام"
+
+            with open(rashad_file, "rb") as f:
+                res = client.post("/admin/bulk-import", data={"file": (f, "rashad.xlsx")}, content_type="multipart/form-data")
+
+            self.assertEqual(res.status_code, 200)
+            data = res.get_json()
+            self.assertTrue(data.get("success"))
+            results = data.get("results", {})
+            self.assertEqual(results.get("created"), 8)
+            self.assertEqual(len(results.get("errors")), 0)
+
+            # Re-upload should detect all 8 as duplicates
+            with open(rashad_file, "rb") as f:
+                res_dup = client.post("/admin/bulk-import", data={"file": (f, "rashad.xlsx")}, content_type="multipart/form-data")
+            self.assertEqual(res_dup.status_code, 200)
+            self.assertEqual(res_dup.get_json().get("results", {}).get("skipped"), 8)
+            self.assertEqual(res_dup.get_json().get("results", {}).get("created"), 0)
+
+        # Verify emails extracted properly from 'الإيمبيل'
+        db = get_db()
+        cur = db.cursor()
+        cur.execute(f"SELECT email FROM students WHERE student_id={ph()}", ("2023056972",))
+        row1 = cur.fetchone()
+        row1_dict = dict(row1) if hasattr(row1, "keys") else {"email": row1[0]}
+        self.assertEqual(row1_dict["email"], "abdulrahman.2023056972@bua.edu.eg")
+
+        cur.execute(f"SELECT email FROM students WHERE student_id={ph()}", ("2020123456",))
+        row8 = cur.fetchone()
+        row8_dict = dict(row8) if hasattr(row8, "keys") else {"email": row8[0]}
+        self.assertEqual(row8_dict["email"], "mohamed.2020123456@bua.edu.eg")
+        db.close()
+
 if __name__ == "__main__":
     unittest.main()

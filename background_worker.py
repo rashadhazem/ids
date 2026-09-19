@@ -438,7 +438,7 @@ def submit_bulk_import_job(flask_app, rows: list, user_id: int, user_role: str, 
                 )
                 from bulk_import_helper import (
                     find_col, COL_MAP, to_eng,
-                    match_college_name, extract_academic_year
+                    match_college_name, extract_academic_year, extract_email
                 )
                 from image_processor import _college_folder
 
@@ -466,7 +466,7 @@ def submit_bulk_import_job(flask_app, rows: list, user_id: int, user_role: str, 
                         year      = extract_academic_year(raw_year, sid, CURRENT_YEAR)
                         raw_coll  = find_col(row, COL_MAP["college"]).strip()
                         college   = match_college_name(raw_coll, user_role=user_role, user_college=user_college)
-                        email     = find_col(row, COL_MAP["email"]).strip().lower()
+                        email     = extract_email(row)
 
                         # Only sid and full_name are required. Email is optional!
                         if not sid or not full_name:

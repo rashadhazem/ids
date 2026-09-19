@@ -116,6 +116,34 @@ def find_col(row_dict: Dict[str, Any], aliases: List[str]) -> str:
     return ""
 
 
+def extract_email(row_dict: Dict[str, Any]) -> str:
+    """
+    Extract email address from row dictionary:
+    1. Checks all standard aliases (الايميل, البريد الالكتروني, الإيمبيل, etc.)
+    2. Fallback: inspects any column header containing 'يميل', 'يمبيل', 'بريد', or 'mail'
+    3. Fallback: inspects any cell value containing '@' and '.'
+    4. Auto-corrects typo where '@' was replaced by dot before domain (e.g. user.2020.bua.edu.eg)
+    """
+    val = find_col(row_dict, COL_MAP["email"]).strip()
+    if not val:
+        for k, v in row_dict.items():
+            k_norm = normalize_header(k)
+            if any(w in k_norm for w in ("يميل", "يمبيل", "بريد", "mail")):
+                val = clean_excel_val(v).strip()
+                if val:
+                    break
+    if not val:
+        for k, v in row_dict.items():
+            s = clean_excel_val(v).strip()
+            if "@" in s and "." in s and " " not in s and len(s) > 5:
+                val = s
+                break
+    if val and "@" not in val and ".bua.edu.eg" in val:
+        val = val.rsplit(".bua.edu.eg", 1)[0] + "@bua.edu.eg"
+
+    return val.lower() if val else ""
+
+
 def parse_uploaded_file(raw_bytes: bytes, filename: str) -> List[Dict[str, str]]:
     """
     Parse an uploaded .xlsx, .xls, or .csv file into a list of row dictionaries.
