@@ -330,15 +330,16 @@ def smart_crop_face(
     faces: list = None,
     pil_img: Image.Image = None,
     return_pil: bool = False,
+    zoom: float = 1.0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
 ) -> bytes | Image.Image:
     """
     Auto-crop image into a professional ID card / passport portrait:
-    - Focuses strictly on the person's head, face, and collar (bust).
-    - Eliminates the lower body, torso, legs, feet, and wide surrounding background.
-    - Preserves entire head, hair, headwear, chin, and neck without clipping.
-    - Guarantees exact 4:5 aspect ratio (400x500 pixels) with 100% frame fill,
-      zero black letterbox bars, and zero distortion.
-    Supports in-memory pil_img and return_pil to avoid repeated decode/encode passes.
+    - Focuses strictly on the person's head, face, and shoulders (head & shoulders portrait).
+    - Eliminates lower body, torso, and wide background.
+    - Preserves entire head, hair, headwear, chin, neck and shoulders without clipping.
+    - Guarantees exact 4:5 aspect ratio (400x500 pixels) with 100% frame fill.
     """
     if pil_img is None:
         if not image_bytes:
@@ -349,7 +350,6 @@ def smart_crop_face(
         pil = pil_img
 
     iw, ih = pil.size
-
     target_ar = TARGET_W / TARGET_H  # 400 / 500 = 0.8
 
     # If faces not provided, get detailed face detections
@@ -383,9 +383,9 @@ def smart_crop_face(
         chin_bottom = min(ih, fy + fh + int(fh * 0.10))
         head_height = max(1, chin_bottom - head_top)
 
-        # Professional ID / Passport standard:
-        # Head height should occupy between 52% and 62% of final portrait height
-        desired_head_fraction = 0.56
+        # Professional ID / Passport standard (Head & Shoulders):
+        # Base head fraction of 0.63 ensures close-up focus on face and shoulders
+        desired_head_fraction = min(0.75, max(0.48, 0.63 * zoom))
         ideal_crop_h = int(head_height / desired_head_fraction)
 
         # Ensure crop fits the image
@@ -398,20 +398,20 @@ def smart_crop_face(
             crop_h = int(crop_w / target_ar)
 
         # Horizontal centering: Center strictly on the eye midpoint / face center
-        left = int(eye_cx - crop_w / 2.0)
+        left = int(eye_cx - crop_w / 2.0 + offset_x * crop_w * 0.4)
         left = max(0, min(left, iw - crop_w))
 
         # Vertical placement:
-        # Standard composition: Eyes should sit at ~38% from top of crop frame
-        target_top = int(eye_cy - crop_h * 0.38)
+        # Ideal composition: Eyes at ~35% from top of crop frame
+        target_top = int(eye_cy - crop_h * 0.35 + offset_y * crop_h * 0.4)
 
-        # Headroom safety: guarantee skull top is below top of crop frame by at least 6%
-        headroom_limit = head_top - int(crop_h * 0.06)
+        # Headroom safety: guarantee skull top is below top of crop frame by at least 5%
+        headroom_limit = head_top - int(crop_h * 0.05)
         if target_top > headroom_limit:
             target_top = headroom_limit
 
-        # Chin clearance: guarantee chin is above bottom by at least 6%
-        chin_limit = chin_bottom + int(crop_h * 0.06) - crop_h
+        # Chin clearance: guarantee chin is above bottom by at least 15% (showing shoulders & collar)
+        chin_limit = chin_bottom + int(crop_h * 0.15) - crop_h
         if target_top < chin_limit:
             target_top = chin_limit
 
@@ -420,7 +420,6 @@ def smart_crop_face(
 
     else:
         # Fallback when no face detected: focus on upper portrait portion (bust/head area)
-        # to NEVER show legs or full-body clutter
         if iw / float(ih) > target_ar:
             crop_h = ih
             crop_w = int(ih * target_ar)
@@ -435,7 +434,7 @@ def smart_crop_face(
             left = (iw - crop_w) // 2
             top = max(0, min(int(ih * 0.05), ih - crop_h))
 
-    # Crop and high-quality resize to exact target dimensions
+    # Crop and high-quality resize to exact target dimensions (400x500)
     cropped = pil.crop((left, top, left + crop_w, top + crop_h))
     resized = cropped.resize((TARGET_W, TARGET_H), Image.LANCZOS)
     if return_pil:
@@ -452,10 +451,12 @@ def apply_edits(
     offset_y: float = 0.0,
     auto_crop: bool = True,
     faces: list = None,
+    enforce_single_face: bool = True,
 ) -> bytes:
     """
     Apply manual edits from the front-end canvas editor, then
     optionally run smart face-crop + resize.
+    - If enforce_single_face is True: validates strictly 1 person/face in the photo.
     """
     pil = Image.open(io.BytesIO(image_bytes))
     pil = _fix_exif_rotation(pil).convert("RGB")
@@ -466,24 +467,30 @@ def apply_edits(
     if rotation:
         pil = pil.rotate(-rotation, expand=True)
 
-    has_manual_pan_zoom = (zoom != 1.0 or offset_x != 0.0 or offset_y != 0.0)
-    if has_manual_pan_zoom:
-        iw, ih = pil.size
-        new_w = max(1, int(iw / zoom))
-        new_h = max(1, int(ih / zoom))
-        cx = iw // 2 + int(offset_x * iw * 0.5)
-        cy = ih // 2 + int(offset_y * ih * 0.5)
-        left = max(0, cx - new_w // 2)
-        top = max(0, cy - new_h // 2)
-        left = min(left, max(0, iw - new_w))
-        top = min(top, max(0, ih - new_h))
-        pil = pil.crop((left, top, left + new_w, top + new_h))
+    if enforce_single_face:
+        if faces is None:
+            cv_img = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+            faces = detect_faces_detailed(cv_img=cv_img)
+        count = len(faces) if faces else 0
+        if count == 0:
+            raise ValueError("لم يتم اكتشاف أي شخص في الصورة. يرجى رفع صورة واضحة تظهر ملامح الوجه.")
+        elif count > 1:
+            raise ValueError(f"تم اكتشاف أكثر من شخص في الصورة ({count} أشخاص). يجب أن تحتوي صورة البطاقة على شخص واحد فقط.")
 
-    # Always auto-crop to face unless user explicitly panned/zoomed manually
-    if auto_crop or not has_manual_pan_zoom:
-        return smart_crop_face(pil_img=pil, faces=faces)
+    if auto_crop:
+        # Directly pass oriented full image to smart_crop_face with face-centered zoom & offset
+        return smart_crop_face(pil_img=pil, faces=faces, zoom=zoom, offset_x=offset_x, offset_y=offset_y)
 
-    # Ensure 4:5 aspect ratio without distortion if manual crop
+    # Manual crop handling when auto_crop is False
+    iw, ih = pil.size
+    new_w = max(1, int(iw / max(0.1, zoom)))
+    new_h = max(1, int(ih / max(0.1, zoom)))
+    cx = iw // 2 + int(offset_x * iw * 0.5)
+    cy = ih // 2 + int(offset_y * ih * 0.5)
+    left = max(0, min(cx - new_w // 2, iw - new_w))
+    top = max(0, min(cy - new_h // 2, ih - new_h))
+    pil = pil.crop((left, top, left + new_w, top + new_h))
+
     target_ar = TARGET_W / TARGET_H
     iw, ih = pil.size
     if iw / float(ih) > target_ar:

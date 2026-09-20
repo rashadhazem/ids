@@ -12,3 +12,5 @@ static/uploads/*
 !static/uploads/.gitkeep
 
 rashad.xlsx
+dotnet_react/
+scratch/
