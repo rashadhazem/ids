@@ -1779,8 +1779,8 @@ def admin_export_photos():
                 y_name = s.get("year", "عام")
                 s_id = s.get("student_id", "")
 
-                # Clean naming: College / Year / ID.jpg (Strictly ID only, no name)
-                archive_arcname = f"{c_name}/{y_name}/{s_id}.jpg"
+                # Clean naming: Year / College / ID.jpg (Strictly ID only, no name)
+                archive_arcname = f"{y_name}/{c_name}/{s_id}.jpg"
                 zf.write(local_path, arcname=archive_arcname)
                 manifest_lines.append(f'"{s_id}","{s.get("full_name","")}","{s["college"]}","{y_name}","{archive_arcname}"')
                 added_count += 1
